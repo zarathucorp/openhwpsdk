@@ -38,6 +38,37 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe new-text C:\te
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe copy-save C:\temp\in.hwpx C:\temp\out.hwpx
 ```
 
+문서 정보 읽기:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe doc-info C:\temp\in.hwp
+```
+
+문서 전체 텍스트 읽기:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe read-text C:\temp\in.hwp
+```
+
+문서 전체 텍스트를 UTF-8 파일로 저장:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe read-text C:\temp\in.hwp C:\temp\in.txt
+```
+
+특정 페이지 텍스트 읽기:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe read-page C:\temp\in.hwp 1
+```
+
+필드 존재 여부 및 값 조회:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe field-exists C:\temp\form.hwp TEST
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe field-get C:\temp\form.hwp TEST
+```
+
 필드 값 쓰기:
 
 ```bat
@@ -48,6 +79,12 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe field-set C:\t
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe action InsertText Text="raw action text" --save C:\temp\raw.hwpx
+```
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-list
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-feature insertTable Rows=2 Cols=3 TreatAsChar=false --save C:\temp\table.hwpx
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-feature pageNumbering DrawPos=5 SideChar=- --open C:\temp\table.hwpx --save C:\temp\table-numbered.hwpx
 ```
 
 실제 한글 창을 띄운 상태로 테스트:
@@ -80,6 +117,7 @@ static void Main()
 - 파일 열기 보안 모듈은 `RegisterModule("FilePathCheckDLL", "<registry value name>")` 방식 사용
 - 자동화용 기본 설정은 `ConfigureForAutomation()`으로 묶음
 - `ConfigureForAutomation()`은 보안 모듈 등록 시도 후 `SetMessageBoxMode(0x10)` 적용
+- 읽기 기능은 `GetDocumentText()`, `GetPageText()`, `FieldExists()`, `GetFieldText()`, `GetFieldListRaw()` 제공
 - CLI는 `x86`으로 빌드
 - 라이브러리는 COM late binding 기반이라 타입 라이브러리 참조 없이 동작
 
