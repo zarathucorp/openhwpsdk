@@ -1,0 +1,91 @@
+# OpenHwp Automation
+
+설치된 한글 프로그램을 `COM/OLE`로 제어하기 위한 C# 래퍼와 CLI 샘플입니다.
+
+이 저장소는 한컴의 별도 SDK 런타임을 감싸지 않습니다. 대신 현재 PC에 설치된 한글이 노출하는 `HWPFrame.HwpObject`를 사용합니다.
+
+## 현재 구현
+
+- 라이브러리: `src/OpenHwp.Automation`
+- CLI 샘플: `src/OpenHwp.Automation.Cli`
+- 빌드 스크립트: `build.cmd`
+
+핵심 클래스는 `OpenHwp.Automation.HwpSession` 입니다.
+
+## 빌드
+
+```bat
+build.cmd
+```
+
+## CLI 예제
+
+버전 확인:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe version
+```
+
+새 문서에 텍스트를 넣고 저장:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe new-text C:\temp\hello.hwpx "Hello from OpenHwp"
+```
+
+기존 문서를 열어서 다른 이름으로 저장:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe copy-save C:\temp\in.hwpx C:\temp\out.hwpx
+```
+
+필드 값 쓰기:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe field-set C:\temp\form.hwpx TEST "updated text" C:\temp\form-out.hwpx
+```
+
+제네릭 액션 실행:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe action InsertText Text="raw action text" --save C:\temp\raw.hwpx
+```
+
+실제 한글 창을 띄운 상태로 테스트:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-save C:\temp\in.hwpx C:\temp\out.hwpx
+```
+
+## 코드 사용 예시
+
+```csharp
+using OpenHwp.Automation;
+
+[STAThread]
+static void Main()
+{
+    using (var hwp = HwpSession.Create(visible: false))
+    {
+        hwp.ConfigureForAutomation();
+        hwp.InsertText("hello");
+        hwp.SaveAs(@"C:\temp\hello.hwpx");
+    }
+}
+```
+
+## 설계 메모
+
+- 기본 제어 객체는 `HWPFrame.HwpObject`
+- 액션 실행은 generic wrapper 제공
+- 파일 열기 보안 모듈은 `RegisterModule("FilePathCheckDLL", "<registry value name>")` 방식 사용
+- 자동화용 기본 설정은 `ConfigureForAutomation()`으로 묶음
+- `ConfigureForAutomation()`은 보안 모듈 등록 시도 후 `SetMessageBoxMode(0x10)` 적용
+- CLI는 `x86`으로 빌드
+- 라이브러리는 COM late binding 기반이라 타입 라이브러리 참조 없이 동작
+
+## 제한 사항
+
+- Windows 전용입니다.
+- 설치된 한글 버전에 따라 일부 액션 이름/파라미터 이름이 달라질 수 있습니다.
+- 숨김 상태 처리, 새 창/새 탭 동작은 버전별 차이가 있을 수 있습니다.
+- 인프로세스 `HwpCtrl.ocx` 또는 `HwpAutomation.dll`까지 확장하려면 호스트를 `x86`으로 맞추는 편이 안전합니다.
