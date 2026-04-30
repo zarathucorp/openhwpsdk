@@ -722,6 +722,39 @@ namespace OpenHwp.Automation
                 });
         }
 
+        public bool SetTableCellText(int tableIndex, int rowMoveCount, int columnMoveCount, string text)
+        {
+            if (rowMoveCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(rowMoveCount));
+            }
+
+            if (columnMoveCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(columnMoveCount));
+            }
+
+            if (text == null)
+            {
+                throw new ArgumentNullException(nameof(text));
+            }
+
+            return WithEditMode(
+                1,
+                () =>
+                {
+                    if (!SelectTableCell(rowMoveCount, columnMoveCount, tableIndex))
+                    {
+                        return false;
+                    }
+
+                    TryRunCommand("TableCellBlock");
+                    ExecuteAction("TableDeleteCell");
+                    InsertText(text);
+                    return true;
+                });
+        }
+
         public bool InsertPageBreak()
         {
             return TryRunCommand("BreakPage");
@@ -743,7 +776,7 @@ namespace OpenHwp.Automation
             return SetCharShapeHeight(fontSizePoints * 100, bold);
         }
 
-        public bool SetCharShapeHeight(int height, bool bold = true)
+        public bool SetCharShapeHeight(int height, bool bold = true, int? textColor = null)
         {
             return ExecuteAction(
                 "CharShape",
@@ -751,6 +784,10 @@ namespace OpenHwp.Automation
                 {
                     set.SetItem("Height", height);
                     set.SetItem("Bold", bold ? 1 : 0);
+                    if (textColor.HasValue)
+                    {
+                        set.SetItem("TextColor", textColor.Value);
+                    }
                 });
         }
 

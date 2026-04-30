@@ -38,6 +38,12 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe new-text C:\te
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe copy-save C:\temp\in.hwpx C:\temp\out.hwpx
 ```
 
+기존 문서를 PDF로 저장:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible export-pdf C:\temp\in.hwpx C:\temp\out.pdf
+```
+
 문서 정보 읽기:
 
 ```bat
@@ -79,6 +85,27 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe field-set C:\t
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe action InsertText Text="raw action text" --save C:\temp\raw.hwpx
+```
+
+Markdown 내용을 HWPX 템플릿으로 옮기고, HWPX 레이아웃 보존 여부를 검사:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-to-hwpx C:\temp\input.md C:\temp\template.hwpx C:\temp\out.hwpx
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout C:\temp\template.hwpx C:\temp\out.hwpx C:\temp\layout-report.md
+```
+
+Markdown 내용을 한 줄씩 `InsertText`로 문서 끝에 추가:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible append-markdown-lines C:\temp\template.hwpx C:\temp\input.md C:\temp\linewise-out.hwpx
+```
+
+Markdown table values can be inserted into existing HWPX table cells without recreating the table:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-table-list C:\temp\input.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table C:\temp\template.hwpx C:\temp\input.md C:\temp\table-out.hwpx 8 3 1 0 1 2 5
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible table-cell-set C:\temp\template.hwpx C:\temp\cell-out.hwpx 3 1 1 "cell text"
 ```
 
 ```bat

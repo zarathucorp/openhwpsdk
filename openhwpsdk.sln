@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenHwp.Automation", "src\OpenHwp.Automation\OpenHwp.Automation.csproj", "{2F485849-139C-C58F-07BD-B0F3390DAC45}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenHwp.Automation.Cli", "src\OpenHwp.Automation.Cli\OpenHwp.Automation.Cli.csproj", "{D7C7B7F3-C94D-96C2-3882-90D496EF4A54}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2F485849-139C-C58F-07BD-B0F3390DAC45}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F485849-139C-C58F-07BD-B0F3390DAC45}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F485849-139C-C58F-07BD-B0F3390DAC45}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F485849-139C-C58F-07BD-B0F3390DAC45}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7C7B7F3-C94D-96C2-3882-90D496EF4A54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7C7B7F3-C94D-96C2-3882-90D496EF4A54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7C7B7F3-C94D-96C2-3882-90D496EF4A54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7C7B7F3-C94D-96C2-3882-90D496EF4A54}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2F485849-139C-C58F-07BD-B0F3390DAC45} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{D7C7B7F3-C94D-96C2-3882-90D496EF4A54} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {68A45C42-532C-43A8-B007-2B3AE8B1B2AA}
+	EndGlobalSection
+EndGlobal

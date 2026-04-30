@@ -66,6 +66,8 @@ namespace OpenHwp.Automation.Cli
                     return NewText(commandArgs, visible, keepOpen);
                 case "copy-save":
                     return CopySave(commandArgs, visible, keepOpen);
+                case "export-pdf":
+                    return ExportPdf(commandArgs, visible, keepOpen);
                 case "doc-info":
                     return DocInfo(commandArgs, visible, keepOpen);
                 case "read-text":
@@ -82,6 +84,18 @@ namespace OpenHwp.Automation.Cli
                     return FieldSet(commandArgs, visible, keepOpen);
                 case "replace-markdown":
                     return ReplaceMarkdown(commandArgs, visible, keepOpen);
+                case "append-markdown-lines":
+                    return AppendMarkdownLines(commandArgs, visible, keepOpen);
+                case "markdown-table-list":
+                    return MarkdownTableList(commandArgs);
+                case "table-cell-set":
+                    return TableCellSet(commandArgs, visible, keepOpen);
+                case "fill-markdown-table":
+                    return FillMarkdownTable(commandArgs, visible, keepOpen);
+                case "markdown-to-hwpx":
+                    return MarkdownToHwpx(commandArgs);
+                case "validate-layout":
+                    return ValidateLayout(commandArgs);
                 case "replace-after-marker":
                     return ReplaceAfterMarker(commandArgs, visible, keepOpen);
                 case "replace-text":
@@ -144,6 +158,25 @@ namespace OpenHwp.Automation.Cli
                 hwp.ConfigureForAutomation();
                 hwp.Open(args[1]);
                 hwp.SaveAs(args[2], string.Empty, string.Empty);
+            }
+
+            Console.WriteLine(args[2]);
+            return 0;
+        }
+
+        private static int ExportPdf(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: export-pdf <inputPath> <outputPdfPath>");
+                return 1;
+            }
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+                hwp.SaveAs(args[2], "PDF", string.Empty);
             }
 
             Console.WriteLine(args[2]);
@@ -450,11 +483,246 @@ namespace OpenHwp.Automation.Cli
                 hwp.ConfigureForAutomation();
                 hwp.Open(args[1]);
                 hwp.ReplaceDocumentText(plainText);
-                hwp.SaveAs(args[3], string.Empty, string.Empty);
+                hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
             }
 
             Console.WriteLine(args[3]);
             return 0;
+        }
+
+        private static int AppendMarkdownLines(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine("Usage: append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
+                return 1;
+            }
+
+            var maxLines = 0;
+            var hasMaxLines = args.Length >= 5 && int.TryParse(args[4], out maxLines) && maxLines > 0;
+            var markdown = ReadTextFile(args[2]);
+            var plainText = MarkdownTextConverter.ToPlainText(markdown);
+            var lines = plainText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            var inserted = 0;
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+                hwp.Run("MoveDocEnd");
+                hwp.SetCharShapeHeight(1000, false, 0);
+
+                foreach (var line in lines)
+                {
+                    if (hasMaxLines && inserted >= maxLines)
+                    {
+                        break;
+                    }
+
+                    hwp.InsertText((line ?? string.Empty) + Environment.NewLine);
+                    inserted++;
+                }
+
+                hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
+            }
+
+            Console.WriteLine(args[3]);
+            Console.WriteLine("inserted_lines=" + inserted);
+            return 0;
+        }
+
+        private static int MarkdownTableList(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: markdown-table-list <markdownPath>");
+                return 1;
+            }
+
+            var markdown = ReadTextFile(args[1]);
+            var tables = MarkdownTableParser.ParseTables(markdown);
+            Console.WriteLine("tables=" + tables.Count);
+
+            for (var tableIndex = 0; tableIndex < tables.Count; tableIndex++)
+            {
+                var table = tables[tableIndex];
+                var maxColumns = 0;
+
+                for (var rowIndex = 0; rowIndex < table.Count; rowIndex++)
+                {
+                    if (table[rowIndex].Count > maxColumns)
+                    {
+                        maxColumns = table[rowIndex].Count;
+                    }
+                }
+
+                var preview = table.Count > 0 ? string.Join(" | ", table[0]) : string.Empty;
+                Console.WriteLine(
+                    "[{0}] rows={1} max_cols={2} first_row={3}",
+                    tableIndex,
+                    table.Count,
+                    maxColumns,
+                    Abbreviate(preview, 120));
+            }
+
+            return 0;
+        }
+
+        private static int TableCellSet(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 7)
+            {
+                Console.Error.WriteLine("Usage: table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
+                return 1;
+            }
+
+            var tableIndex = ParseIntArgument(args[3], "tableIndex");
+            var rowMoveCount = ParseIntArgument(args[4], "rowMoveCount");
+            var columnMoveCount = ParseIntArgument(args[5], "columnMoveCount");
+            if (tableIndex < 0 || rowMoveCount < 0 || columnMoveCount < 0)
+            {
+                Console.Error.WriteLine("tableIndex, rowMoveCount, and columnMoveCount must be zero or greater.");
+                return 1;
+            }
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+
+                if (!hwp.SetTableCellText(tableIndex, rowMoveCount, columnMoveCount, args[6]))
+                {
+                    Console.Error.WriteLine("Target table cell was not selected.");
+                    return 2;
+                }
+
+                hwp.SaveAs(args[2], ResolveSaveFormat(args[2]), string.Empty);
+            }
+
+            Console.WriteLine(args[2]);
+            Console.WriteLine("table_index=" + tableIndex);
+            Console.WriteLine("row_move_count=" + rowMoveCount);
+            Console.WriteLine("column_move_count=" + columnMoveCount);
+            return 0;
+        }
+
+        private static int FillMarkdownTable(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 6)
+            {
+                Console.Error.WriteLine("Usage: fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
+                return 1;
+            }
+
+            var markdownTableIndex = ParseIntArgument(args[4], "markdownTableIndex");
+            var hwpTableIndex = ParseIntArgument(args[5], "hwpTableIndex");
+            var startRow = args.Length >= 7 ? ParseIntArgument(args[6], "startRow") : 0;
+            var startCol = args.Length >= 8 ? ParseIntArgument(args[7], "startCol") : 0;
+            var skipMarkdownRows = args.Length >= 9 ? ParseIntArgument(args[8], "skipMarkdownRows") : 0;
+            var maxRows = args.Length >= 10 ? ParseIntArgument(args[9], "maxRows") : 0;
+            var maxCols = args.Length >= 11 ? ParseIntArgument(args[10], "maxCols") : 0;
+            if (markdownTableIndex < 0 || hwpTableIndex < 0 || startRow < 0 || startCol < 0 || skipMarkdownRows < 0 || maxRows < 0 || maxCols < 0)
+            {
+                Console.Error.WriteLine("table indexes, start positions, skip count, and limits must be zero or greater.");
+                return 1;
+            }
+
+            var markdown = ReadTextFile(args[2]);
+            var tables = MarkdownTableParser.ParseTables(markdown);
+            if (markdownTableIndex < 0 || markdownTableIndex >= tables.Count)
+            {
+                Console.Error.WriteLine("markdownTableIndex is out of range. table_count=" + tables.Count);
+                return 1;
+            }
+
+            var sourceTable = tables[markdownTableIndex];
+            var writtenCells = 0;
+            var writtenRows = 0;
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+
+                for (var sourceRowIndex = skipMarkdownRows; sourceRowIndex < sourceTable.Count; sourceRowIndex++)
+                {
+                    if (maxRows > 0 && writtenRows >= maxRows)
+                    {
+                        break;
+                    }
+
+                    var sourceRow = sourceTable[sourceRowIndex];
+                    var targetRow = startRow + writtenRows;
+                    var writtenCols = 0;
+
+                    for (var sourceColIndex = 0; sourceColIndex < sourceRow.Count; sourceColIndex++)
+                    {
+                        if (maxCols > 0 && writtenCols >= maxCols)
+                        {
+                            break;
+                        }
+
+                        var targetCol = startCol + writtenCols;
+                        var text = sourceRow[sourceColIndex] ?? string.Empty;
+                        Console.WriteLine(
+                            "[{0},{1}] <- [{2},{3}] {4}",
+                            targetRow,
+                            targetCol,
+                            sourceRowIndex,
+                            sourceColIndex,
+                            Abbreviate(text, 80));
+
+                        if (!hwp.SetTableCellText(hwpTableIndex, targetRow, targetCol, text))
+                        {
+                            Console.Error.WriteLine(
+                                "Target table cell was not selected. hwpTableIndex={0}, rowMoveCount={1}, columnMoveCount={2}",
+                                hwpTableIndex,
+                                targetRow,
+                                targetCol);
+                            return 2;
+                        }
+
+                        writtenCells++;
+                        writtenCols++;
+                    }
+
+                    writtenRows++;
+                }
+
+                hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
+            }
+
+            Console.WriteLine(args[3]);
+            Console.WriteLine("markdown_table_index=" + markdownTableIndex);
+            Console.WriteLine("hwp_table_index=" + hwpTableIndex);
+            Console.WriteLine("written_rows=" + writtenRows);
+            Console.WriteLine("written_cells=" + writtenCells);
+            return 0;
+        }
+
+        private static int MarkdownToHwpx(string[] args)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine("Usage: markdown-to-hwpx <markdownPath> <templateHwpxPath> <outputHwpxPath>");
+                return 1;
+            }
+
+            MarkdownHwpxWriter.Convert(args[1], args[2], args[3]);
+            Console.WriteLine(args[3]);
+            return 0;
+        }
+
+        private static int ValidateLayout(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
+                return 1;
+            }
+
+            var passed = HwpxLayoutValidator.Validate(args[1], args[2], args.Length >= 4 ? args[3] : null);
+            return passed ? 0 : 2;
         }
 
         private static int DemoList()
@@ -525,6 +793,27 @@ namespace OpenHwp.Automation.Cli
             }
 
             return hwp;
+        }
+
+        private static string ResolveSaveFormat(string path)
+        {
+            var extension = Path.GetExtension(path ?? string.Empty);
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase))
+            {
+                return "HWPX";
+            }
+
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase))
+            {
+                return "HWP";
+            }
+
+            if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                return "PDF";
+            }
+
+            return string.Empty;
         }
 
         private static HwpSession OpenDocument(string inputPath, bool visible, bool keepOpen)
@@ -850,6 +1139,17 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static int ParseIntArgument(string raw, string name)
+        {
+            int value;
+            if (!int.TryParse(raw, out value))
+            {
+                throw new ArgumentException(name + " must be an integer.");
+            }
+
+            return value;
+        }
+
         private static int WriteTextResult(string text, string outputPath)
         {
             if (string.IsNullOrWhiteSpace(outputPath))
@@ -885,6 +1185,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] version");
             Console.WriteLine("  [--visible] [--keep-open] new-text <outputPath> <text>");
             Console.WriteLine("  [--visible] [--keep-open] copy-save <inputPath> <outputPath>");
+            Console.WriteLine("  [--visible] [--keep-open] export-pdf <inputPath> <outputPdfPath>");
             Console.WriteLine("  [--visible] [--keep-open] doc-info <inputPath>");
             Console.WriteLine("  [--visible] [--keep-open] read-text <inputPath> [outputPath]");
             Console.WriteLine("  [--visible] [--keep-open] read-page <inputPath> <pageNumber> [outputPath]");
@@ -893,6 +1194,12 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] field-list-raw <inputPath> [option] [optionEx]");
             Console.WriteLine("  [--visible] [--keep-open] field-set <inputPath> <fieldName> <text> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-markdown <inputPath> <markdownPath> <outputPath>");
+            Console.WriteLine("  [--visible] [--keep-open] append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
+            Console.WriteLine("  markdown-table-list <markdownPath>");
+            Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
+            Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
+            Console.WriteLine("  markdown-to-hwpx <markdownPath> <templateHwpxPath> <outputHwpxPath>");
+            Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
