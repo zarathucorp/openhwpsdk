@@ -92,6 +92,12 @@ namespace OpenHwp.Automation.Cli
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
                     return FillMarkdownTable(commandArgs, visible, keepOpen);
+                case "extract-form-map":
+                    return ExtractFormMap(commandArgs);
+                case "apply-form-map":
+                    return ApplyFormMap(commandArgs, visible, keepOpen);
+                case "probe-form-map":
+                    return ProbeFormMap(commandArgs, visible, keepOpen);
                 case "validate-layout":
                     return ValidateLayout(commandArgs);
                 case "replace-after-marker":
@@ -698,6 +704,90 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int ExtractFormMap(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: extract-form-map <templateHwpxPath> <outputXmlPath>");
+                return 1;
+            }
+
+            HwpxFormMap.Extract(args[1], args[2]);
+            Console.WriteLine(args[2]);
+            return 0;
+        }
+
+        private static int ApplyFormMap(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine("Usage: apply-form-map <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations]");
+                return 1;
+            }
+
+            var maxOperations = 0;
+            if (args.Length >= 5)
+            {
+                maxOperations = ParseIntArgument(args[4], "maxOperations");
+                if (maxOperations < 0)
+                {
+                    Console.Error.WriteLine("maxOperations must be zero or greater.");
+                    return 1;
+                }
+            }
+
+            HwpxFormMap.ApplyResult result;
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+                result = HwpxFormMap.Apply(hwp, args[2], maxOperations);
+                hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
+            }
+
+            Console.WriteLine(args[3]);
+            Console.WriteLine("attempted=" + result.Attempted);
+            Console.WriteLine("applied=" + result.Applied);
+            Console.WriteLine("failed=" + result.Failed);
+            Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe);
+            return result.Failed == 0 ? 0 : 2;
+        }
+
+        private static int ProbeFormMap(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine("Usage: probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
+                return 1;
+            }
+
+            var maxOperations = 0;
+            if (args.Length >= 5)
+            {
+                maxOperations = ParseIntArgument(args[4], "maxOperations");
+                if (maxOperations < 0)
+                {
+                    Console.Error.WriteLine("maxOperations must be zero or greater.");
+                    return 1;
+                }
+            }
+
+            HwpxFormMap.ProbeResult result;
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                hwp.ConfigureForAutomation();
+                hwp.Open(args[1], string.Empty, "forceopen:true");
+                result = HwpxFormMap.Probe(hwp, args[2], args[3], maxOperations);
+            }
+
+            Console.WriteLine(args[3]);
+            Console.WriteLine("attempted=" + result.Attempted);
+            Console.WriteLine("passed=" + result.Passed);
+            Console.WriteLine("failed=" + result.Failed);
+            Console.WriteLine("skipped=" + result.Skipped);
+            return result.Failed == 0 ? 0 : 2;
+        }
+
         private static int ValidateLayout(string[] args)
         {
             if (args.Length < 3)
@@ -1183,6 +1273,9 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
+            Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
+            Console.WriteLine("  [--visible] [--keep-open] apply-form-map <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");

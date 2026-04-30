@@ -755,6 +755,146 @@ namespace OpenHwp.Automation
                 });
         }
 
+        public bool InsertPictureInTableCell(
+            int tableIndex,
+            int rowMoveCount,
+            int columnMoveCount,
+            string path,
+            int width = 200,
+            int height = 200,
+            bool clearCellText = true)
+        {
+            if (rowMoveCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(rowMoveCount));
+            }
+
+            if (columnMoveCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(columnMoveCount));
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("Picture path is required.", nameof(path));
+            }
+
+            return WithEditMode(
+                1,
+                () =>
+                {
+                    if (!SelectTableCell(rowMoveCount, columnMoveCount, tableIndex))
+                    {
+                        return false;
+                    }
+
+                    if (clearCellText)
+                    {
+                        TryRunCommand("TableCellBlock");
+                        ExecuteAction("TableDeleteCell");
+                    }
+
+                    InsertPicture(path, true, 0, false, false, 0, width, height);
+                    return true;
+                });
+        }
+
+        public bool InsertPictureAtTextAnchor(
+            string anchorText,
+            string path,
+            int width = 200,
+            int height = 200,
+            bool removeAnchorText = false,
+            int occurrenceIndex = 0)
+        {
+            if (string.IsNullOrWhiteSpace(anchorText))
+            {
+                throw new ArgumentException("Anchor text is required.", nameof(anchorText));
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("Picture path is required.", nameof(path));
+            }
+
+            if (occurrenceIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(occurrenceIndex));
+            }
+
+            return WithEditMode(
+                1,
+                () =>
+                {
+                    if (!TryFindOccurrence(anchorText, occurrenceIndex))
+                    {
+                        return false;
+                    }
+
+                    if (removeAnchorText)
+                    {
+                        TryRunCommand("Delete");
+                    }
+
+                    InsertPicture(path, true, 0, false, false, 0, width, height);
+                    return true;
+                });
+        }
+
+        public bool WriteTextAtTextAnchor(string anchorText, string text, bool replaceAnchorText = true, int occurrenceIndex = 0)
+        {
+            if (string.IsNullOrWhiteSpace(anchorText))
+            {
+                throw new ArgumentException("Anchor text is required.", nameof(anchorText));
+            }
+
+            if (text == null)
+            {
+                throw new ArgumentNullException(nameof(text));
+            }
+
+            if (occurrenceIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(occurrenceIndex));
+            }
+
+            return WithEditMode(
+                1,
+                () =>
+                {
+                    if (!TryFindOccurrence(anchorText, occurrenceIndex))
+                    {
+                        return false;
+                    }
+
+                    if (replaceAnchorText)
+                    {
+                        if (!TryRunCommand("Delete"))
+                        {
+                            TryRunCommand("DeleteBack");
+                        }
+                    }
+
+                    InsertText(text);
+                    return true;
+                });
+        }
+
+        public bool FindTextOccurrence(string text, int occurrenceIndex = 0)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new ArgumentException("Text is required.", nameof(text));
+            }
+
+            if (occurrenceIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(occurrenceIndex));
+            }
+
+            return WithEditMode(1, () => TryFindOccurrence(text, occurrenceIndex));
+        }
+
         public bool InsertPageBreak()
         {
             return TryRunCommand("BreakPage");
@@ -1478,6 +1618,25 @@ namespace OpenHwp.Automation
             {
                 ComHelpers.SafeRelease(actionObject);
             }
+        }
+
+        private bool TryFindOccurrence(string findText, int occurrenceIndex)
+        {
+            Run("MoveDocBegin");
+            for (var index = 0; index <= occurrenceIndex; index++)
+            {
+                if (!TryFind(findText))
+                {
+                    return false;
+                }
+
+                if (index < occurrenceIndex)
+                {
+                    TryRunCommand("MoveRight");
+                }
+            }
+
+            return true;
         }
 
         private T Invoke<T>(Func<T> operation, string operationName)
