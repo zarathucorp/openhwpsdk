@@ -92,8 +92,6 @@ namespace OpenHwp.Automation.Cli
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
                     return FillMarkdownTable(commandArgs, visible, keepOpen);
-                case "markdown-to-hwpx":
-                    return MarkdownToHwpx(commandArgs);
                 case "validate-layout":
                     return ValidateLayout(commandArgs);
                 case "replace-after-marker":
@@ -700,19 +698,6 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
-        private static int MarkdownToHwpx(string[] args)
-        {
-            if (args.Length < 4)
-            {
-                Console.Error.WriteLine("Usage: markdown-to-hwpx <markdownPath> <templateHwpxPath> <outputHwpxPath>");
-                return 1;
-            }
-
-            MarkdownHwpxWriter.Convert(args[1], args[2], args[3]);
-            Console.WriteLine(args[3]);
-            return 0;
-        }
-
         private static int ValidateLayout(string[] args)
         {
             if (args.Length < 3)
@@ -1198,7 +1183,6 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
-            Console.WriteLine("  markdown-to-hwpx <markdownPath> <templateHwpxPath> <outputHwpxPath>");
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");

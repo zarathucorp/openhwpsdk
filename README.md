@@ -89,10 +89,9 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe action InsertT
 
 Markdown 내용을 HWPX 템플릿으로 옮기고, HWPX 레이아웃 보존 여부를 검사:
 
-```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-to-hwpx C:\temp\input.md C:\temp\template.hwpx C:\temp\out.hwpx
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout C:\temp\template.hwpx C:\temp\out.hwpx C:\temp\layout-report.md
-```
+`markdown-to-hwpx` is not exposed. A command with that name must render Markdown as HWP structure and character styles: headings as larger headings, tables as HWP tables, and inline marks such as bold/code as styled text.
+
+Existing form templates should be filled through cell/cursor commands, then checked with `validate-layout`.
 
 Markdown 내용을 한 줄씩 `InsertText`로 문서 끝에 추가:
 
