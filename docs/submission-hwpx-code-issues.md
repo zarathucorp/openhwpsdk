@@ -1,226 +1,220 @@
 # Submission HWPX Code Issues
 
-This note records project-code issues found while filling `test/[붙임 8] 제출서식_차라투_v1.0.hwpx` from `test/제출서식_차라투_R&D수행창업기업_v0.3.md`.
+Reviewed on 2026-05-04 against the current `codex/hwp-automation` source tree.
 
-It excludes user workflow mistakes and focuses on problems that should be fixed or supported in the project itself.
+This note supersedes the first-run issue log for filling the submission template under `test/` from the Markdown draft under `test/`. Several issues below were real when discovered, but are no longer open in the same form after the later CLI and HWPX writer changes.
 
-## 1. COM commands can hang without a useful failure mode
+## Current implementation snapshot
 
-Observed symptom:
+- COM calls now have a default timeout guard through `ComOperationWatchdog`, plus `--com-timeout-ms` and `--no-com-timeout`.
+- `diagnose-com [inputPath]` reports HWP process state, COM registration, HWP version, visibility, file-path checker registration, message box mode, and optional document-open success.
+- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md]` exists for this submission form.
+- `extract-form-map` still creates a whole-package map, and `probe-form-map` still verifies HWP-selectability before editor-backed writes.
+- `apply-form-map --package` now supports text-only package writes and validates layout after writing.
+- `SimpleZipArchive.WriteAllPreservingTemplate` now provides the core package writer that preserves template entry order, compression method, timestamps, and untouched entries.
+- `validate-content` exists for required strings, Markdown-artifact checks, unresolved placeholder checks, repeated guide-like text warnings, and possible overflow warnings.
+- `HwpSession.Open` falls back to a temporary ASCII-like copy path when HWP COM fails to open the original path.
+- Image insertion through HWP automation now passes `sizeOption=1` for table-cell and text-anchor image writes so requested dimensions are honored.
 
-- `OpenHwp.Automation.Cli.exe version` did not return within 60 seconds.
-- At the time, hidden `Hwp` processes were present, and the CLI did not produce a diagnostic before timing out externally.
+## Resolved Or Mostly Resolved
 
-Why this is a code issue:
+### 1. COM commands can hang without a useful failure mode
 
-- CLI commands that create `HWPFrame.HwpObject` have no bounded startup/open timeout, watchdog, or clear stale-process diagnostic.
-- A user cannot distinguish "HWP is not installed", "COM startup is blocked", "security module prompt is hidden", and "existing Hwp process is stuck".
+Status: mostly resolved.
 
-Recommended update:
+What changed:
 
-- Add startup/open watchdog diagnostics around `HwpSession.Create`, `Visible` setup, `ConfigureForAutomation`, and `Open`.
-- Add a CLI diagnostic command that reports running `Hwp` processes, COM registration availability, file path checker registration result, message box mode, and last step reached.
-- Consider a `--attach` / `--new-instance` choice and a `--diagnose-only` mode.
+- `ComOperationWatchdog` wraps session creation, automation setup, and document open.
+- Timeout failure prints operation name, timeout, last step, and running `Hwp` processes, then exits with code `124`.
+- `diagnose-com` gives a direct diagnostic path instead of forcing users to infer whether HWP is installed, COM is registered, a hidden process is stuck, or document open failed.
 
-## 2. No supported full-form Markdown-to-template fill path exists
+Remaining gap:
 
-Observed symptom:
+- There is still no explicit `--attach` / `--new-instance` choice.
+- The timeout guard exits the CLI process; it does not recover the COM call in-process.
 
-- The available commands support partial workflows: `extract-form-map`, `apply-form-map`, `markdown-table-list`, `fill-markdown-table`, `replace-markdown`, and `append-markdown-lines`.
-- `replace-markdown` is intentionally unsafe for official forms because it rewrites the document as plain text.
-- There is no project command that takes an official HWPX template plus a structured Markdown application and fills the existing form while preserving layout.
+### 2. Former gap: full-form Markdown-to-template fill path
 
-Why this is a code issue:
+Status: resolved for this submission template, not a generic product feature.
 
-- The project has enough building blocks to inspect and validate HWPX, but not enough orchestration to fill a complete official submission form.
-- The one-off fill had to use a custom PowerShell HWPX package rewrite script.
+What changed:
 
-Recommended update:
+- `fill-submission-template` is now a supported CLI command.
+- The command has an explicit `r-and-d-startup-2026` profile and produces a report with cell writes, paragraph writes, rebuilt rows, missing targets, and skipped unsafe targets.
+- The implementation fills the existing template package instead of rebuilding the official form from scratch.
 
-- Add a supported command such as:
+Remaining gap:
 
-```bat
-OpenHwp.Automation.Cli.exe fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--report report.md]
-```
+- The command is profile-specific and hard-coded to this application form.
+- A reusable structured Markdown-to-official-form engine is still not available.
 
-- Keep it template-preserving: fill existing cells and body placeholders, do not rebuild official tables.
-- Make the mapping explicit and testable, preferably through a named profile for this submission form.
+### 3. Former gap: HWPX package writing in the core CLI
 
-## 3. HWPX package writing is missing from the core CLI
+Status: resolved for text/package updates.
 
-Observed symptom:
+What changed:
 
-- `extract-form-map` can inspect the HWPX package without COM.
-- `apply-form-map` writes through HWP automation only.
-- When COM was not reliable, there was no built-in package-level writer, so the result had to be written by a separate script.
+- `SimpleZipArchive` now reads and writes HWPX/ZIP packages.
+- `WriteAllPreservingTemplate` preserves the original package and replaces only changed entries.
+- `apply-form-map --package` applies text writes without HWP COM and runs `validate-layout` afterward.
+- `fill-submission-template` also writes through the package-preserving path.
 
-Why this is a code issue:
+Remaining gap:
 
-- Existing form filling should not depend entirely on COM when HWPX XML can be safely patched and then validated.
-- `SimpleZipArchive` only reads ZIP entries; the project has no package update abstraction.
+- Package mode intentionally skips image writes as unsafe. Images still require the HWP automation path.
 
-Recommended update:
+### 4. Cell text replacement must preserve nested tables and non-target paragraphs
 
-- Add a safe HWPX package writer that updates selected XML and preview entries while preserving all other package entries.
-- Add an `apply-form-map --package` or separate `apply-form-map-package` path for text-only cell/paragraph writes.
-- Always run `validate-layout` after package writes.
+Status: mostly resolved.
 
-## 4. Cell text replacement must preserve nested tables and non-target paragraphs
+What changed:
 
-Observed symptom:
+- Package cell writes select a direct, non-nested paragraph and avoid paragraphs that contain nested `hp:tbl` nodes.
+- Submission-template cell writes use the same non-nested paragraph rule.
+- Unsafe cells are skipped and reported instead of being cleared destructively.
 
-- A first draft of the fill script cleared every paragraph in a target cell.
-- Some cells in the template contain nested tables or multiple paragraphs; clearing them reduced the document table count from 48 to 44.
-- `validate-layout` caught this as a structural failure.
+Remaining gap:
 
-Why this is a code issue:
+- There is still no dedicated automated regression fixture that proves nested-table preservation across multiple template variants.
 
-- HWPX table cells are containers, not plain text boxes.
-- Any future package writer or cell writer that treats a cell as one flat text field can accidentally delete nested tables, guide structures, or embedded content.
+### 5. Cell height does not auto-grow after direct package writes
 
-Recommended update:
+Status: partially resolved.
 
-- For package-level writes, update only the intended paragraph/run inside a cell.
-- If a cell contains nested tables, preserve them by default and require an explicit destructive mode to clear them.
-- Add tests where a cell contains both a normal paragraph and nested `hp:tbl` content.
+What changed:
 
-## 5. Stored paragraph indexes become stale after structural edits
+- `HwpxTextLayoutHelper.ExpandRowHeightForText` estimates required wrapped line count and raises row cell heights.
+- `validate-content` can warn on possible text overflow.
+- `SubmissionTemplateFiller` removes stale `hp:linesegarray` metadata from paragraphs it rewrites.
 
-Observed symptom:
+Remaining gap:
 
-- After expanding the participant table, later body paragraph positions shifted.
-- A fixed paragraph-index write strategy would place body content in the wrong area.
+- Height expansion is heuristic, not a real Hanword layout pass.
+- Editor-backed reflow is still needed when precise visual fidelity matters.
 
-Why this is a code issue:
+### 6. Markdown conversion leaks source-format artifacts
 
-- `extract-form-map` records paragraph indexes, but indexes are not stable after row or paragraph insertion.
-- For multi-step form fills, writes that change row counts can invalidate later anchor positions.
+Status: mostly resolved for `fill-submission-template`.
 
-Recommended update:
+What changed:
 
-- Resolve anchors dynamically by heading/current text at write time, not only by the original paragraph index.
-- Process structural changes and paragraph writes in separate stages, re-reading the document between stages.
-- Prefer semantic anchors such as heading text, nearest section title, table labels, and occurrence within that section.
+- `SubmissionTemplateFiller.NormalizeBlockLines` removes Markdown headings, image syntax, caption-only italic lines, horizontal rules, table separators, guide blockquote markers, and unsupported guide markers.
+- Markdown list lines are normalized into the blank-template body style (`circle` style lines and indented dash detail lines).
+- Markdown table body rows are flattened into readable list lines rather than raw pipe syntax.
 
-## 6. Markdown conversion leaks source-format artifacts
+Remaining gap:
 
-Observed symptom:
+- The normalization lives inside the submission profile, not a reusable Markdown semantic parser.
 
-- Markdown guide markers and image/table syntax can leak into HWPX text when flattened naively.
-- In this run, blockquote-style guide lines had to be normalized separately so they did not appear as stray marker text in the output.
+### 7. `validate-layout` passes structure but not content quality
 
-Why this is a code issue:
+Status: partially resolved.
 
-- `MarkdownTextConverter` is useful for plain text, but insufficient for official-form submission content.
-- It does not model sections, guide callouts, images, tables, and body placeholders as separate semantic elements.
+What changed:
 
-Recommended update:
+- `validate-content` now separates content checks from layout checks.
+- It detects suspicious Markdown artifacts, unresolved TODO-style placeholders, missing required strings, repeated guide-like text, and possible cell overflow warnings.
 
-- Add a structured Markdown parser for proposal/application Markdown:
-  - headings as sections
-  - blockquote guide lines as optional labels or skipped instructions
-  - Markdown tables as table row data
-  - images as image references or explicit placeholders
-  - bullet/list text as clean HWP paragraph text
-- Add a "submission plain text" normalization mode that removes source-only guide markers and Markdown image syntax.
+Remaining gap:
 
-## 7. `validate-layout` passes structure but not content quality
+- It does not validate domain-specific business rules such as budget consistency, duplicate guide text by exact Korean form wording, image presence by semantic section, or reviewer-facing content quality.
 
-Observed symptom:
+### 8. Direct XML text writes do not preserve HWP paragraph styling
 
-- `validate-layout` correctly detected table count/structure failures.
-- It does not detect content problems such as repeated guide text, leftover Markdown artifacts, or missing key fields.
+Status: partially resolved.
 
-Why this is a code issue:
+What changed:
 
-- Layout preservation is necessary but not sufficient for generated official-form output.
-- A generated file can pass structural validation while still needing content cleanup.
+- The submission filler clones existing template paragraphs for multi-line body content.
+- It can force known character style references for the roadmap overview table and related normalized table text.
+- It preserves the template's heading/body split rather than importing Markdown headings as raw text.
 
-Recommended update:
+Remaining gap:
 
-- Add a content validation command or extend reports with optional checks:
-  - required key strings exist
-  - known placeholders are gone or intentionally preserved
-  - suspicious Markdown tokens are absent
-  - guide text is not duplicated into answer cells
-  - budget totals match across repeated tables
-- Keep this separate from layout validation so structural and content failures are easy to distinguish.
+- Generic package-map text writes still update one paragraph's text node; they do not create full HWP-native structures for arbitrary Markdown headings, lists, captions, or tables.
+- A true generic Markdown-to-HWP renderer remains out of scope.
 
-## 8. Existing docs and report paths show Korean mojibake in some outputs
+### 9. HWP image insertion ignores requested size
 
-Observed symptom:
+Status: resolved for the supported image insertion paths.
 
-- Existing documentation and some generated reports display Korean filenames/text as mojibake in the current PowerShell environment.
+What changed:
 
-Why this is a code issue:
+- `InsertPictureInTableCell` and `InsertPictureAtTextAnchor` now call `InsertPicture` with `sizeOption=1`.
+- The verified submission run inserted images at the requested dimensions and exported to PDF.
 
-- The repository should be reliable on the target Windows setup where Korean HWP/HWPX filenames are normal.
-- Garbled paths make generated commands and reports harder to reuse.
+Remaining gap:
 
-Recommended update:
+- Package-mode image insertion is still intentionally unsupported.
 
-- Normalize docs to UTF-8 and verify they display correctly in Windows PowerShell and common editors.
-- When generating reports, write UTF-8 consistently and avoid copying console-mojibake text into persistent files.
-- Prefer `-LiteralPath`-safe examples for Korean/bracketed filenames.
+### 10. HWP COM open fails on some Korean/special-character paths
 
-## 9. Direct XML text writes do not preserve HWP paragraph styling
+Status: mostly resolved.
 
-Observed symptom:
+What changed:
 
-- Long body text was inserted too densely.
-- Markdown sections, lists, tables, and image references were flattened into plain text instead of becoming HWP paragraphs, styled headings, bullet paragraphs, tables, or image placeholders.
-- Some inserted text visually looked unlike the surrounding official form style.
+- `HwpSession.Open` retries through a temporary `%TEMP%\openhwpsdk-<guid>.hwpx` copy when the original path fails and the file exists.
+- Temporary copies are cleaned up when the session owns and closes HWP.
 
-Why this is a code issue:
+Remaining gap:
 
-- The fallback fill path edited `Contents/section0.xml` directly and mostly replaced or appended `hp:t` text nodes.
-- It did not create proper HWP paragraph runs for each logical Markdown block.
-- It did not clone the surrounding paragraph style intentionally for body text, bullet text, table text, captions, and long-form descriptions.
-- It also left existing `hp:linesegarray` layout metadata in place. That metadata belongs to the old text layout and is not a real reflow of the newly inserted text.
+- This is a fallback for COM path fragility, not a guarantee that every path/permission/process-lock case will succeed.
 
-Recommended update:
+## Still Open
 
-- Do not treat Markdown body content as one large plain string.
-- Convert Markdown into HWP-native structures:
-  - section headings as styled HWP heading paragraphs
-  - bullets as repeated paragraphs cloned from the template bullet style
-  - Markdown tables as HWP tables or mapped rows
-  - image references as image placeholders or inserted pictures
-  - captions as caption-style paragraphs
-- When writing package XML directly, create fresh paragraph/run structures and either remove stale `hp:linesegarray` safely or force a HWP layout recalculation through the editor after writing.
-- Add visual or PDF regression checks for text density, leftover Markdown syntax, and style drift.
+### A. Generic semantic anchors can still become stale after structural edits
 
-## 10. Cell height does not auto-grow after direct package writes
+Current state:
 
-Observed symptom:
+- Package anchor writes first try the recorded paragraph index, then fall back to matching the original paragraph text and occurrence.
+- This is safer than index-only writing, but it can still fail if the anchor text itself changes or appears in a newly duplicated section.
 
-- When large text was inserted into existing table cells, the cell did not naturally expand vertically.
-- The result can look cramped, clipped, or visually dense even though the table structure count is preserved.
+Recommended next step:
 
-Why this is a code issue:
+- Add section-scoped semantic anchors: nearest heading, table label, occurrence within section, and current text.
+- Re-read the modified package between structural row expansion and later anchor writes when using generic map workflows.
 
-- In HWPX, table cell dimensions are explicit XML data, including `hp:cellSz height`.
-- Directly replacing `hp:t` text does not run Hanword's table layout engine.
-- Existing line segment data and cell heights remain from the blank template or old short placeholder text.
-- `validate-layout` currently checks that structure did not break, but it does not verify whether text overflow, auto-fit, row height expansion, or visual readability is acceptable.
+### B. Content validation is useful but still shallow
 
-Recommended update:
+Current state:
 
-- Add an editor-backed write path for table cells that uses HWP's own insertion/layout engine, then saves the file.
-- For package-level writing, implement row-height adjustment:
-  - estimate required wrapped line count from cell width, font size, and text length
-  - update the relevant `hp:cellSz height` values consistently across the row
-  - avoid changing table width, columns, or border fills
-- Preserve nested tables while expanding only the target row/cell height.
-- Add a validation check that flags cells where inserted text length exceeds a safe threshold for the current cell size.
-- For long answer cells, prefer splitting content into multiple paragraphs rather than one long run.
+- `validate-content` catches common generated-output mistakes.
+- It is not a proposal reviewer and does not know this form's budget, section, table, or image requirements.
 
-## Suggested update order
+Recommended next step:
 
-1. Add COM diagnostics and timeout-friendly failure reporting.
-2. Add a safe HWPX package writer and package-level form-map apply path.
-3. Add HWP-native paragraph/style generation and table-cell auto-height handling.
-4. Add semantic anchor lookup for tables and body sections.
-5. Add a structured Markdown-to-submission-form profile for this template.
-6. Add content validation checks in addition to `validate-layout`.
-7. Clean encoding in docs and generated reports.
+- Add profile-specific content checks for `r-and-d-startup-2026`.
+- Check required section strings, expected image anchors, removed guide markers, budget totals across repeated tables, and known leftover Markdown patterns.
+
+### C. Encoding cleanup is still incomplete
+
+Current state:
+
+- Generated reports are generally written as UTF-8 with BOM where intended.
+- Some existing docs, including README text and older workflow examples, still contain Korean mojibake copied from console output.
+
+Recommended next step:
+
+- Normalize human-facing docs in a separate pass.
+- Avoid copying console-mojibake text into tracked files.
+- Prefer `-LiteralPath`-safe examples for Korean or bracketed filenames.
+
+### D. Generic package image writes are intentionally unsupported
+
+Current state:
+
+- HWP automation can insert images.
+- Package mode skips image writes because embedding binary image resources and drawing-object XML safely requires more than replacing text nodes.
+
+Recommended next step:
+
+- Keep image writes on the HWP automation path until a tested package-level image writer exists.
+- If package-level image support is added, validate binary part insertion, manifest updates, object IDs, dimensions, and PDF render output.
+
+## Current Priority Order
+
+1. Add profile-specific `validate-content` checks for the submission template.
+2. Add regression fixtures for nested-table preservation, row-height expansion, Markdown artifact removal, and image sizing.
+3. Improve generic anchor resolution with section-scoped semantic anchors.
+4. Normalize tracked docs and examples to readable UTF-8 Korean.
+5. Add package-level image insertion only after a narrow fixture proves manifest/object/dimension handling is safe.

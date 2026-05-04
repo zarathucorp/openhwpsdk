@@ -31,7 +31,7 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("mappingScope", "package"),
                 new XAttribute("generatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
 
-            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. HWPX XML is read only; writing is performed through HWP automation."));
+            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Use --package for text-only XML writes; use HWP automation for image writes or editor-backed behavior."));
             root.Add(BuildPackageElement(entries, xmlDocuments, writablePartNames));
 
             var tablesElement = new XElement("tables");
