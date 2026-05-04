@@ -41,6 +41,7 @@
   <ItemGroup>
     <Compile Include="HwpxFormMap.cs" />
     <Compile Include="HwpxLayoutValidator.cs" />
+    <Compile Include="ComOperationWatchdog.cs" />
     <Compile Include="MarkdownTableParser.cs" />
     <Compile Include="MarkdownTextConverter.cs" />
     <Compile Include="Program.cs" />

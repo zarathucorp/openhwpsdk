@@ -8,6 +8,9 @@ namespace OpenHwp.Automation.Cli
 {
     internal static class Program
     {
+        private const int DefaultComTimeoutMs = 60000;
+        private static int _comTimeoutMs = DefaultComTimeoutMs;
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -45,6 +48,25 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
+                if (string.Equals(args[offset], "--com-timeout-ms", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (offset + 1 >= args.Length || !int.TryParse(args[offset + 1], out _comTimeoutMs) || _comTimeoutMs < 0)
+                    {
+                        Console.Error.WriteLine("--com-timeout-ms requires a zero or positive integer value.");
+                        return 1;
+                    }
+
+                    offset += 2;
+                    continue;
+                }
+
+                if (string.Equals(args[offset], "--no-com-timeout", StringComparison.OrdinalIgnoreCase))
+                {
+                    _comTimeoutMs = 0;
+                    offset++;
+                    continue;
+                }
+
                 break;
             }
 
@@ -62,6 +84,8 @@ namespace OpenHwp.Automation.Cli
             {
                 case "version":
                     return Version(visible, keepOpen);
+                case "diagnose-com":
+                    return DiagnoseCom(commandArgs, visible, keepOpen);
                 case "new-text":
                     return NewText(commandArgs, visible, keepOpen);
                 case "copy-save":
@@ -130,6 +154,90 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static int DiagnoseCom(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length > 2)
+            {
+                Console.Error.WriteLine("Usage: diagnose-com [inputPath]");
+                return 1;
+            }
+
+            Console.WriteLine("prog_id=" + HwpSession.HwpObjectProgId);
+            Console.WriteLine("running_hwp_processes=" + ComOperationWatchdog.DescribeHwpProcesses());
+
+            Type comType;
+            using (var watchdog = ComOperationWatchdog.Start("resolve HWP COM registration", _comTimeoutMs))
+            {
+                watchdog.Step("Resolve HWP COM ProgID");
+                comType = Type.GetTypeFromProgID(HwpSession.HwpObjectProgId, false);
+            }
+
+            Console.WriteLine("com_registered=" + BoolText(comType != null));
+            if (comType == null)
+            {
+                Console.WriteLine("last_step=Resolve HWP COM ProgID");
+                return 2;
+            }
+
+            Console.WriteLine("com_type=" + comType.FullName);
+
+            HwpSession hwp = null;
+            try
+            {
+                hwp = CreateSession(visible, keepOpen);
+                Console.WriteLine("create_session=ok");
+                Console.WriteLine("last_step=Create HWP session");
+
+                using (var watchdog = ComOperationWatchdog.Start("read HWP COM properties", _comTimeoutMs))
+                {
+                    watchdog.Step("Read HWP version");
+                    Console.WriteLine("version=" + hwp.Version);
+
+                    watchdog.Step("Read active window visibility");
+                    Console.WriteLine("visible=" + BoolText(hwp.Visible));
+                }
+
+                using (var watchdog = ComOperationWatchdog.Start("configure HWP automation diagnostics", _comTimeoutMs))
+                {
+                    watchdog.Step("Register file path checker module");
+                    Console.WriteLine("file_path_checker_registered=" + BoolText(hwp.TryRegisterFilePathCheckerModule()));
+
+                    watchdog.Step("Read message box mode before update");
+                    Console.WriteLine("message_box_mode_before=" + hwp.GetMessageBoxMode());
+
+                    watchdog.Step("Set automation message box mode");
+                    Console.WriteLine("message_box_mode_set_result=" + hwp.SetMessageBoxMode(0x10));
+
+                    watchdog.Step("Read message box mode after update");
+                    Console.WriteLine("message_box_mode_after=" + hwp.GetMessageBoxMode());
+                }
+
+                if (args.Length == 2)
+                {
+                    OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
+                    Console.WriteLine("open=ok");
+                    Console.WriteLine("current_path=" + hwp.CurrentPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("diagnostic_failed=true");
+                Console.WriteLine("error_type=" + ex.GetType().Name);
+                Console.WriteLine("error_message=" + ex.Message);
+                return 2;
+            }
+            finally
+            {
+                if (hwp != null)
+                {
+                    hwp.Dispose();
+                }
+            }
+
+            Console.WriteLine("last_step=complete");
+            return 0;
+        }
+
         private static int NewText(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 3)
@@ -140,7 +248,7 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
+                ConfigureSessionForAutomation(hwp);
                 hwp.InsertText(args[2]);
                 hwp.SaveAs(args[1], string.Empty, string.Empty);
             }
@@ -159,8 +267,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
                 hwp.SaveAs(args[2], string.Empty, string.Empty);
             }
 
@@ -178,8 +286,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
                 hwp.SaveAs(args[2], "PDF", string.Empty);
             }
 
@@ -322,8 +430,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
                 hwp.PutFieldText(args[2], args[3]);
                 hwp.SaveAs(args[4], string.Empty, string.Empty);
             }
@@ -342,8 +450,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
 
                 if (!hwp.ReplaceAllText(args[2], args[3]))
                 {
@@ -371,8 +479,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
 
                 for (var index = 3; index < args.Length; index += 2)
                 {
@@ -450,11 +558,11 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
+                ConfigureSessionForAutomation(hwp);
 
                 if (!string.IsNullOrWhiteSpace(openPath))
                 {
-                    hwp.Open(openPath);
+                    OpenSessionDocument(hwp, openPath);
                 }
 
                 var executed = ExecuteDemoFeature(hwp, featureName, parameters);
@@ -484,8 +592,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
                 hwp.ReplaceDocumentText(plainText);
                 hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
             }
@@ -511,8 +619,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
                 hwp.Run("MoveDocEnd");
                 hwp.SetCharShapeHeight(1000, false, 0);
 
@@ -591,8 +699,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
 
                 if (!hwp.SetTableCellText(tableIndex, rowMoveCount, columnMoveCount, args[6]))
                 {
@@ -645,8 +753,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
 
                 for (var sourceRowIndex = skipMarkdownRows; sourceRowIndex < sourceTable.Count; sourceRowIndex++)
                 {
@@ -739,8 +847,8 @@ namespace OpenHwp.Automation.Cli
             HwpxFormMap.ApplyResult result;
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
                 result = HwpxFormMap.Apply(hwp, args[2], maxOperations);
                 hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
             }
@@ -775,8 +883,8 @@ namespace OpenHwp.Automation.Cli
             HwpxFormMap.ProbeResult result;
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1], string.Empty, "forceopen:true");
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
                 result = HwpxFormMap.Probe(hwp, args[2], args[3], maxOperations);
             }
 
@@ -843,8 +951,8 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(args[1]);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1]);
 
                 if (!hwp.ReplaceFromMarkerToDocumentEnd(args[2], content))
                 {
@@ -861,13 +969,44 @@ namespace OpenHwp.Automation.Cli
 
         private static HwpSession CreateSession(bool visible, bool keepOpen)
         {
-            var hwp = HwpSession.Create(visible);
-            if (keepOpen)
+            using (var watchdog = ComOperationWatchdog.Start("create HWP session", _comTimeoutMs))
             {
-                hwp.LeaveOpen();
-            }
+                var hwp = HwpSession.Create(visible, watchdog.Step);
+                if (keepOpen)
+                {
+                    watchdog.Step("Mark HWP session as keep-open");
+                    hwp.LeaveOpen();
+                }
 
-            return hwp;
+                watchdog.Step("HWP session ready");
+                return hwp;
+            }
+        }
+
+        private static void ConfigureSessionForAutomation(HwpSession hwp)
+        {
+            using (var watchdog = ComOperationWatchdog.Start("configure HWP automation", _comTimeoutMs))
+            {
+                watchdog.Step("Register file path checker module");
+                hwp.TryRegisterFilePathCheckerModule();
+
+                watchdog.Step("Set automation message box mode");
+                hwp.SetMessageBoxMode(0x10);
+            }
+        }
+
+        private static void OpenSessionDocument(HwpSession hwp, string inputPath)
+        {
+            OpenSessionDocument(hwp, inputPath, string.Empty, string.Empty);
+        }
+
+        private static void OpenSessionDocument(HwpSession hwp, string inputPath, string format, string options)
+        {
+            using (var watchdog = ComOperationWatchdog.Start("open HWP document", _comTimeoutMs))
+            {
+                watchdog.Step("Open document: " + Path.GetFullPath(inputPath));
+                hwp.Open(inputPath, format, options);
+            }
         }
 
         private static string ResolveSaveFormat(string path)
@@ -896,8 +1035,8 @@ namespace OpenHwp.Automation.Cli
             var hwp = CreateSession(visible, keepOpen);
             try
             {
-                hwp.ConfigureForAutomation();
-                hwp.Open(inputPath);
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, inputPath);
                 return hwp;
             }
             catch
@@ -917,7 +1056,7 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
+                ConfigureSessionForAutomation(hwp);
                 hwp.Run(args[1]);
             }
 
@@ -964,11 +1103,11 @@ namespace OpenHwp.Automation.Cli
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
-                hwp.ConfigureForAutomation();
+                ConfigureSessionForAutomation(hwp);
 
                 if (!string.IsNullOrWhiteSpace(openPath))
                 {
-                    hwp.Open(openPath);
+                    OpenSessionDocument(hwp, openPath);
                 }
 
                 var executed = hwp.ExecuteAction(actionName, set =>
@@ -1254,10 +1393,16 @@ namespace OpenHwp.Automation.Cli
             return value.Substring(0, maxLength - 3) + "...";
         }
 
+        private static string BoolText(bool value)
+        {
+            return value.ToString().ToLowerInvariant();
+        }
+
         private static void PrintUsage()
         {
             Console.WriteLine("OpenHwp.Automation.Cli");
-            Console.WriteLine("  [--visible] [--keep-open] version");
+            Console.WriteLine("  [--visible] [--keep-open] [--com-timeout-ms <ms>|--no-com-timeout] version");
+            Console.WriteLine("  [--visible] [--keep-open] [--com-timeout-ms <ms>|--no-com-timeout] diagnose-com [inputPath]");
             Console.WriteLine("  [--visible] [--keep-open] new-text <outputPath> <text>");
             Console.WriteLine("  [--visible] [--keep-open] copy-save <inputPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] export-pdf <inputPath> <outputPdfPath>");

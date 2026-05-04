@@ -8,7 +8,7 @@ namespace OpenHwp.Automation
 {
     public sealed class HwpSession : IDisposable
     {
-        private const string HwpObjectProgId = "HWPFrame.HwpObject";
+        public const string HwpObjectProgId = "HWPFrame.HwpObject";
         private const string FilePathCheckDllModule = "FilePathCheckDLL";
         private static readonly string[] KnownModulePaths =
         {
@@ -28,13 +28,34 @@ namespace OpenHwp.Automation
 
         public static HwpSession Create(bool visible = true)
         {
+            return Create(visible, null);
+        }
+
+        public static HwpSession Create(bool visible, Action<string> reportStep)
+        {
+            if (reportStep != null)
+            {
+                reportStep("Resolve HWP COM ProgID");
+            }
+
             var type = Type.GetTypeFromProgID(HwpObjectProgId, throwOnError: true);
             if (type == null)
             {
                 throw new HwpAutomationException("HWPFrame.HwpObject is not registered on this machine.");
             }
 
+            if (reportStep != null)
+            {
+                reportStep("Create HWP COM instance");
+            }
+
             var session = new HwpSession(Activator.CreateInstance(type), quitOnDispose: true);
+
+            if (reportStep != null)
+            {
+                reportStep("Set active HWP window visibility");
+            }
+
             session.Visible = visible;
             return session;
         }
