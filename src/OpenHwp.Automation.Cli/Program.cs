@@ -128,6 +128,8 @@ namespace OpenHwp.Automation.Cli
                     return ProbeFormMap(commandArgs, visible, keepOpen);
                 case "validate-layout":
                     return ValidateLayout(commandArgs);
+                case "validate-content":
+                    return ValidateContent(commandArgs);
                 case "replace-after-marker":
                     return ReplaceAfterMarker(commandArgs, visible, keepOpen);
                 case "replace-text":
@@ -1037,6 +1039,45 @@ namespace OpenHwp.Automation.Cli
             return passed ? 0 : 2;
         }
 
+        private static int ValidateContent(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
+                return 1;
+            }
+
+            string reportPath = null;
+            var requiredStrings = new List<string>();
+            for (var index = 2; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--require", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --require.");
+                        return 1;
+                    }
+
+                    index++;
+                    requiredStrings.Add(args[index]);
+                    continue;
+                }
+
+                if (reportPath == null)
+                {
+                    reportPath = args[index];
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            var passed = HwpxContentValidator.Validate(args[1], reportPath, requiredStrings);
+            return passed ? 0 : 2;
+        }
+
         private static int DemoList()
         {
             Console.WriteLine("insertText");
@@ -1553,6 +1594,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
+            Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
