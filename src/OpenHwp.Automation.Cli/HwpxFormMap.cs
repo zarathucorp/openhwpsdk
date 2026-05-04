@@ -689,6 +689,8 @@ namespace OpenHwp.Automation.Cli
                     var rowSpan = cellSpan == null ? 1 : GetInt(cellSpan, "rowSpan", 1);
                     var colSpan = cellSpan == null ? 1 : GetInt(cellSpan, "colSpan", 1);
                     var merged = rowSpan > 1 || colSpan > 1;
+                    var nestedTableCount = cell.Descendants(Hp + "tbl").Count();
+                    var directParagraphCount = GetDirectCellParagraphs(cell).Count();
                     var firstParagraph = cell.Descendants(Hp + "p").FirstOrDefault();
                     var firstRun = firstParagraph == null ? null : firstParagraph.Descendants(Hp + "run").FirstOrDefault();
 
@@ -704,6 +706,8 @@ namespace OpenHwp.Automation.Cli
                             new XAttribute("rowSpan", rowSpan.ToString(CultureInfo.InvariantCulture)),
                             new XAttribute("colSpan", colSpan.ToString(CultureInfo.InvariantCulture)),
                             new XAttribute("merged", merged ? "true" : "false"),
+                            new XAttribute("nestedTableCount", nestedTableCount.ToString(CultureInfo.InvariantCulture)),
+                            new XAttribute("directParagraphCount", directParagraphCount.ToString(CultureInfo.InvariantCulture)),
                             new XAttribute("borderFillId", GetString(cell, "borderFillIDRef")),
                             new XAttribute("width", (cellSz == null ? 0 : GetInt(cellSz, "width", 0)).ToString(CultureInfo.InvariantCulture)),
                             new XAttribute("height", (cellSz == null ? 0 : GetInt(cellSz, "height", 0)).ToString(CultureInfo.InvariantCulture)),
@@ -711,7 +715,9 @@ namespace OpenHwp.Automation.Cli
                             new XAttribute("styleId", firstParagraph == null ? string.Empty : GetString(firstParagraph, "styleIDRef")),
                             new XAttribute("charPrId", firstRun == null ? string.Empty : GetString(firstRun, "charPrIDRef")),
                             new XElement("currentText", NormalizeText(TextOf(cell))),
-                            new XElement("writeText"),
+                            new XElement("writeText",
+                                new XAttribute("preserveNestedTables", "true"),
+                                new XAttribute("destructive", "false")),
                             new XElement("writeImage",
                                 new XAttribute("path", string.Empty),
                                 new XAttribute("width", "200"),
@@ -1267,9 +1273,13 @@ namespace OpenHwp.Automation.Cli
 
         private static XElement GetWritableCellParagraph(XElement cell)
         {
+            return GetDirectCellParagraphs(cell).FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
+        }
+
+        private static IEnumerable<XElement> GetDirectCellParagraphs(XElement cell)
+        {
             var subList = cell.Element(Hp + "subList");
-            var paragraphs = subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
-            return paragraphs.FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
+            return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
         }
 
         private static bool TrySetParagraphText(XElement paragraph, string text, out string reason)
