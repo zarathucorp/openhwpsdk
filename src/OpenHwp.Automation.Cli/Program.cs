@@ -110,6 +110,8 @@ namespace OpenHwp.Automation.Cli
                     return ReplaceMarkdown(commandArgs, visible, keepOpen);
                 case "append-markdown-lines":
                     return AppendMarkdownLines(commandArgs, visible, keepOpen);
+                case "markdown-submission-text":
+                    return MarkdownSubmissionText(commandArgs);
                 case "markdown-table-list":
                     return MarkdownTableList(commandArgs);
                 case "table-cell-set":
@@ -680,6 +682,19 @@ namespace OpenHwp.Automation.Cli
             }
 
             return 0;
+        }
+
+        private static int MarkdownSubmissionText(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: markdown-submission-text <markdownPath> [outputPath]");
+                return 1;
+            }
+
+            var markdown = ReadTextFile(args[1]);
+            var text = MarkdownTextConverter.ToSubmissionPlainText(markdown);
+            return WriteTextResult(text, args.Length >= 3 ? args[2] : null);
         }
 
         private static int TableCellSet(string[] args, bool visible, bool keepOpen)
@@ -1529,6 +1544,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] field-set <inputPath> <fieldName> <text> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-markdown <inputPath> <markdownPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
+            Console.WriteLine("  markdown-submission-text <markdownPath> [outputPath]");
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
