@@ -90,7 +90,7 @@ namespace OpenHwp.Automation.Cli
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(false));
+                File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(true));
             }
 
             Console.Write(report.ToString());
