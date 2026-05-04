@@ -21,15 +21,17 @@ namespace OpenHwp.Automation.Cli
 
         private readonly string _markdown;
         private readonly IList<IList<IList<string>>> _tables;
+        private readonly string _templatePath;
         private readonly IDictionary<string, byte[]> _entries;
         private readonly XDocument _section;
         private readonly FillReport _report = new FillReport();
 
         private SubmissionTemplateFiller(string templatePath, string markdownPath)
         {
+            _templatePath = Path.GetFullPath(templatePath);
             _markdown = ReadTextFile(markdownPath);
             _tables = MarkdownTableParser.ParseTables(_markdown);
-            _entries = SimpleZipArchive.ReadAll(Path.GetFullPath(templatePath));
+            _entries = SimpleZipArchive.ReadAll(_templatePath);
 
             byte[] sectionBytes;
             if (!_entries.TryGetValue("Contents/section0.xml", out sectionBytes))
@@ -280,7 +282,7 @@ namespace OpenHwp.Automation.Cli
 
         private void FillRoadmapNarrative()
         {
-            SetExpectedEffectSection(@"^### 5\. 기대효과.*?$", @"\z");
+            SetExpectedEffectSection(@"^### 5\. 기대효과.*?$", @"(?=^## □ 자가진단표)");
             SetSectionAfterHeading("3-3. 최근 5년간 사업화, 외부 협업, 외부 자금 유치 경험", @"^#### 3-3\. 최근 5년간 사업화, 외부 협업, 외부 자금 유치 경험.*?$", @"(?=^### 5\. 기대효과)");
             SetSectionAfterHeading("3-2. 사업화 추진 기반 현황", @"^#### 3-2\. 사업화 추진 기반 현황.*?$", @"(?=^#### 3-3\.)");
             SetSectionAfterHeading("3-1. 기업 성장 전략", @"^#### 3-1\. 기업 성장 전략.*?$", @"(?=^#### 3-2\.)");
@@ -331,19 +333,40 @@ namespace OpenHwp.Automation.Cli
                 SetCellText(40, item.Key, 6, CellValue(43, sourceRow, 6));
             }
 
-            var laborRows = TableRowsAfterHeader(44).ToList();
-            laborRows.Add(new List<string> { "합계", string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, CellValue(44, 5, 6) });
-            RebuildTableDataRows(41, 2, laborRows, new Dictionary<int, CellProjection>
+            FillLaborCostTable(TableRowsAfterHeader(44).ToList());
+        }
+
+        private void FillLaborCostTable(IList<IList<string>> sourceRows)
+        {
+            var detailRows = sourceRows.Where(row => !IsSummaryRow(row)).ToList();
+            FillLaborCostRow(2, "정규직", detailRows.Where(row => Cell(row, 0).Contains("정규직")).ToList());
+            FillLaborCostRow(3, "비정규직", detailRows.Where(row => Cell(row, 0).Contains("비정규직")).ToList());
+            FillLaborCostRow(4, "무기계약직", detailRows.Where(row => Cell(row, 0).Contains("무기계약직")).ToList());
+
+            var summary = sourceRows.FirstOrDefault(IsSummaryRow);
+            var total = summary == null ? FormatAmount(SumAmount(detailRows, 6)) : Cell(summary, 6);
+            SetCellText(41, 5, 7, total);
+        }
+
+        private void FillLaborCostRow(int targetRow, string category, IList<IList<string>> rows)
+        {
+            SetCellText(41, targetRow, 1, category);
+            if (rows.Count == 0)
             {
-                { 0, CellProjection.Func(row => Cell(row, 0) == "합계" ? "합    계" : "인건비") },
-                { 1, CellProjection.Func(row => Cell(row, 0) == "합계" ? string.Empty : Cell(row, 0)) },
-                { 2, CellProjection.Column(1) },
-                { 3, CellProjection.Column(2) },
-                { 4, CellProjection.Column(3) },
-                { 5, CellProjection.Column(4) },
-                { 6, CellProjection.Column(5) },
-                { 7, CellProjection.Column(6) }
-            }, 2);
+                for (var column = 2; column <= 7; column++)
+                {
+                    SetCellText(41, targetRow, column, string.Empty);
+                }
+
+                return;
+            }
+
+            SetCellText(41, targetRow, 2, rows.Count == 1 ? Cell(rows[0], 1) : Cell(rows[0], 1) + " 외 " + (rows.Count - 1).ToString(CultureInfo.InvariantCulture) + "명");
+            SetCellText(41, targetRow, 3, rows.Count == 1 ? Cell(rows[0], 2) : FirstNonEmpty(rows, 2) + " 등");
+            SetCellText(41, targetRow, 4, rows.Count == 1 ? Cell(rows[0], 3) : "별첨");
+            SetCellText(41, targetRow, 5, rows.Count == 1 ? Cell(rows[0], 4) : string.Empty);
+            SetCellText(41, targetRow, 6, JoinDistinct(rows, 5));
+            SetCellText(41, targetRow, 7, FormatAmount(SumAmount(rows, 6)));
         }
 
         private void FillConsentForms()
@@ -677,10 +700,7 @@ namespace OpenHwp.Automation.Cli
                 textNodes[index].Value = string.Empty;
             }
 
-            foreach (var lineSegments in paragraph.Elements(Hp + "linesegarray").ToList())
-            {
-                lineSegments.Remove();
-            }
+            paragraph.Elements(Hp + "linesegarray").Remove();
         }
 
         private IList<string> NormalizeBlockLines(string block)
@@ -774,6 +794,48 @@ namespace OpenHwp.Automation.Cli
             return columnIndex >= 0 && columnIndex < row.Count ? row[columnIndex] ?? string.Empty : string.Empty;
         }
 
+        private static bool IsSummaryRow(IList<string> row)
+        {
+            var marker = Regex.Replace(Cell(row, 0), @"[\s\*]+", string.Empty);
+            return marker.Contains("합계");
+        }
+
+        private static string JoinDistinct(IEnumerable<IList<string>> rows, int columnIndex)
+        {
+            return string.Join(" / ", rows
+                .Select(row => Cell(row, columnIndex).Trim())
+                .Where(value => value.Length > 0)
+                .Distinct(StringComparer.Ordinal));
+        }
+
+        private static string FirstNonEmpty(IEnumerable<IList<string>> rows, int columnIndex)
+        {
+            return rows
+                .Select(row => Cell(row, columnIndex).Trim())
+                .FirstOrDefault(value => value.Length > 0) ?? string.Empty;
+        }
+
+        private static long SumAmount(IEnumerable<IList<string>> rows, int columnIndex)
+        {
+            long sum = 0;
+            foreach (var row in rows)
+            {
+                var value = Regex.Replace(Cell(row, columnIndex), @"[^0-9\-]", string.Empty);
+                long parsed;
+                if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
+                {
+                    sum += parsed;
+                }
+            }
+
+            return sum;
+        }
+
+        private static string FormatAmount(long value)
+        {
+            return value == 0 ? string.Empty : value.ToString("N0", CultureInfo.InvariantCulture);
+        }
+
         private static CodePercent SplitCodePercent(string value)
         {
             var match = Regex.Match(value ?? string.Empty, @"^(.*?)\s*/\s*([0-9]+)\s*%?$");
@@ -790,7 +852,22 @@ namespace OpenHwp.Automation.Cli
             value = value.Replace("**", string.Empty).Replace("__", string.Empty).Replace("`", string.Empty).Replace("❖", string.Empty);
             value = HtmlTagPattern.Replace(value, string.Empty);
             value = HttpUtility.HtmlDecode(value);
+            value = RemoveUnsupportedSupplementarySymbols(value);
             return MultiWhitespacePattern.Replace(value, " ").Trim();
+        }
+
+        private static string RemoveUnsupportedSupplementarySymbols(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(value, @"[\uD800-\uDBFF][\uDC00-\uDFFF]", match =>
+            {
+                var codePoint = char.ConvertToUtf32(match.Value, 0);
+                return codePoint >= 0xF0000 && codePoint <= 0xFFFFD ? match.Value : string.Empty;
+            });
         }
 
         private static string NormalizePackageWriteText(string text)
@@ -829,7 +906,7 @@ namespace OpenHwp.Automation.Cli
                 _entries["Preview/PrvText.txt"] = new UTF8Encoding(false).GetBytes(string.Join(Environment.NewLine, NormalizeBlockLines(_markdown).ToArray()));
             }
 
-            SimpleZipArchive.WriteAll(outputPath, _entries);
+            SimpleZipArchive.WriteAllPreservingTemplate(_templatePath, outputPath, _entries);
         }
 
         private void WriteReport(string templatePath, string markdownPath, string outputPath, string reportPath)

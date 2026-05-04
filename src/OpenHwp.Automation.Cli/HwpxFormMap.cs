@@ -170,7 +170,7 @@ namespace OpenHwp.Automation.Cli
                 UpdatePreviewText(entries, xmlDocuments);
             }
 
-            SimpleZipArchive.WriteAll(outputHwpxPath, entries);
+            SimpleZipArchive.WriteAllPreservingTemplate(inputHwpxPath, outputHwpxPath, entries);
             return result;
         }
 
@@ -1325,12 +1325,7 @@ namespace OpenHwp.Automation.Cli
                 textNodes[index].Value = string.Empty;
             }
 
-            var staleLineSegments = paragraph.Elements(Hp + "linesegarray").ToList();
-            foreach (var lineSegments in staleLineSegments)
-            {
-                lineSegments.Remove();
-            }
-
+            paragraph.Elements(Hp + "linesegarray").Remove();
             reason = string.Empty;
             return true;
         }

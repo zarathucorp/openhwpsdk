@@ -72,7 +72,22 @@ namespace OpenHwp.Automation.Cli
             normalized = normalized.Replace("**", string.Empty).Replace("__", string.Empty).Replace("`", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!\*)\*(?!\*)", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!_)_(?!_)", string.Empty);
+            normalized = RemoveUnsupportedSupplementarySymbols(normalized);
             return WhitespacePattern.Replace(normalized, " ").Trim();
+        }
+
+        private static string RemoveUnsupportedSupplementarySymbols(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(value, @"[\uD800-\uDBFF][\uDC00-\uDFFF]", match =>
+            {
+                var codePoint = char.ConvertToUtf32(match.Value, 0);
+                return codePoint >= 0xF0000 && codePoint <= 0xFFFFD ? match.Value : string.Empty;
+            });
         }
     }
 }

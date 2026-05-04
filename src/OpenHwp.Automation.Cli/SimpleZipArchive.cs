@@ -18,11 +18,17 @@ namespace OpenHwp.Automation.Cli
 
         public static IDictionary<string, byte[]> ReadAll(string path)
         {
+            return ReadAllEntries(path)
+                .ToDictionary(entry => entry.Name, entry => entry.Data, StringComparer.Ordinal);
+        }
+
+        public static IList<ArchiveEntry> ReadAllEntries(string path)
+        {
             var bytes = File.ReadAllBytes(path);
             var eocdOffset = FindEndOfCentralDirectory(bytes);
             var entryCount = ReadUInt16(bytes, eocdOffset + 10);
             var centralDirectoryOffset = ReadUInt32(bytes, eocdOffset + 16);
-            var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            var entries = new List<ArchiveEntry>();
             var offset = checked((int)centralDirectoryOffset);
 
             for (var index = 0; index < entryCount; index++)
@@ -34,6 +40,8 @@ namespace OpenHwp.Automation.Cli
 
                 var flags = ReadUInt16(bytes, offset + 8);
                 var method = ReadUInt16(bytes, offset + 10);
+                var dosTime = ReadUInt16(bytes, offset + 12);
+                var dosDate = ReadUInt16(bytes, offset + 14);
                 var compressedSize = ReadUInt32(bytes, offset + 20);
                 var uncompressedSize = ReadUInt32(bytes, offset + 24);
                 var nameLength = ReadUInt16(bytes, offset + 28);
@@ -43,7 +51,13 @@ namespace OpenHwp.Automation.Cli
                 var nameBytes = Slice(bytes, offset + 46, nameLength);
                 var name = DecodeFileName(nameBytes, flags);
 
-                entries[name] = ReadEntryData(bytes, checked((int)localHeaderOffset), method, checked((int)compressedSize), checked((int)uncompressedSize));
+                entries.Add(new ArchiveEntry(
+                    name,
+                    ReadEntryData(bytes, checked((int)localHeaderOffset), method, checked((int)compressedSize), checked((int)uncompressedSize)),
+                    method,
+                    flags,
+                    dosTime,
+                    dosDate));
                 offset += 46 + nameLength + extraLength + commentLength;
             }
 
@@ -68,28 +82,82 @@ namespace OpenHwp.Automation.Cli
                 Directory.CreateDirectory(directory);
             }
 
+            WriteAll(path, ToArchiveEntries(entries));
+        }
+
+        public static void WriteAllPreservingTemplate(string templatePath, string outputPath, IDictionary<string, byte[]> entries)
+        {
+            if (string.IsNullOrWhiteSpace(templatePath))
+            {
+                throw new ArgumentException("Template archive path is required.", nameof(templatePath));
+            }
+
+            if (entries == null)
+            {
+                throw new ArgumentNullException(nameof(entries));
+            }
+
+            var archiveEntries = ReadAllEntries(templatePath);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var archiveEntry in archiveEntries)
+            {
+                byte[] content;
+                if (entries.TryGetValue(archiveEntry.Name, out content))
+                {
+                    archiveEntry.Data = content;
+                }
+
+                seen.Add(archiveEntry.Name);
+            }
+
+            foreach (var name in entries.Keys.Where(name => !seen.Contains(name)).OrderBy(name => name, StringComparer.Ordinal))
+            {
+                archiveEntries.Add(CreateNewEntry(name, entries[name]));
+            }
+
+            WriteAll(outputPath, archiveEntries);
+        }
+
+        public static void WriteAll(string path, IList<ArchiveEntry> entries)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("Archive path is required.", nameof(path));
+            }
+
+            if (entries == null)
+            {
+                throw new ArgumentNullException(nameof(entries));
+            }
+
+            var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
             using (var output = File.Create(path))
             using (var writer = new BinaryWriter(output))
             {
                 var centralDirectoryEntries = new List<CentralDirectoryEntry>();
-                foreach (var name in OrderedEntryNames(entries))
+                foreach (var entry in entries)
                 {
-                    var content = entries[name] ?? new byte[0];
-                    var method = string.Equals(name, "mimetype", StringComparison.Ordinal) ? StoredMethod : DeflatedMethod;
+                    var content = entry.Data ?? new byte[0];
+                    var method = entry.Method;
                     var payload = method == StoredMethod ? content : Deflate(content);
                     var crc = ComputeCrc32(content);
-                    var nameBytes = Encoding.UTF8.GetBytes(name);
+                    var nameBytes = EncodeFileName(entry.Name, entry.Flags);
                     var localHeaderOffset = checked((uint)output.Position);
-                    var now = DateTime.Now;
-                    var dosTime = ToDosTime(now);
-                    var dosDate = ToDosDate(now);
+                    var dosTime = entry.DosTime;
+                    var dosDate = entry.DosDate;
 
-                    WriteLocalHeader(writer, method, crc, checked((uint)payload.Length), checked((uint)content.Length), nameBytes, dosTime, dosDate);
+                    WriteLocalHeader(writer, entry.Flags, method, crc, checked((uint)payload.Length), checked((uint)content.Length), nameBytes, dosTime, dosDate);
                     writer.Write(nameBytes);
                     writer.Write(payload);
 
                     centralDirectoryEntries.Add(new CentralDirectoryEntry(
                         nameBytes,
+                        entry.Flags,
                         method,
                         crc,
                         checked((uint)payload.Length),
@@ -161,17 +229,31 @@ namespace OpenHwp.Automation.Cli
             return (flags & 0x0800) != 0 ? Encoding.UTF8.GetString(bytes) : Encoding.ASCII.GetString(bytes);
         }
 
-        private static IEnumerable<string> OrderedEntryNames(IDictionary<string, byte[]> entries)
+        private static byte[] EncodeFileName(string name, ushort flags)
         {
+            return (flags & Utf8FileNameFlag) != 0 ? Encoding.UTF8.GetBytes(name) : Encoding.ASCII.GetBytes(name);
+        }
+
+        private static IList<ArchiveEntry> ToArchiveEntries(IDictionary<string, byte[]> entries)
+        {
+            var result = new List<ArchiveEntry>();
             if (entries.ContainsKey("mimetype"))
             {
-                yield return "mimetype";
+                result.Add(CreateNewEntry("mimetype", entries["mimetype"], StoredMethod));
             }
 
             foreach (var name in entries.Keys.Where(name => !string.Equals(name, "mimetype", StringComparison.Ordinal)).OrderBy(name => name, StringComparer.Ordinal))
             {
-                yield return name;
+                result.Add(CreateNewEntry(name, entries[name]));
             }
+
+            return result;
+        }
+
+        private static ArchiveEntry CreateNewEntry(string name, byte[] data, ushort method = DeflatedMethod)
+        {
+            var now = DateTime.Now;
+            return new ArchiveEntry(name, data ?? new byte[0], method, 0, ToDosTime(now), ToDosDate(now));
         }
 
         private static byte[] Deflate(byte[] content)
@@ -187,11 +269,11 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static void WriteLocalHeader(BinaryWriter writer, ushort method, uint crc, uint compressedSize, uint uncompressedSize, byte[] nameBytes, ushort dosTime, ushort dosDate)
+        private static void WriteLocalHeader(BinaryWriter writer, ushort flags, ushort method, uint crc, uint compressedSize, uint uncompressedSize, byte[] nameBytes, ushort dosTime, ushort dosDate)
         {
             writer.Write(LocalFileHeaderSignature);
             writer.Write((ushort)20);
-            writer.Write(Utf8FileNameFlag);
+            writer.Write(flags);
             writer.Write(method);
             writer.Write(dosTime);
             writer.Write(dosDate);
@@ -207,7 +289,7 @@ namespace OpenHwp.Automation.Cli
             writer.Write(CentralDirectorySignature);
             writer.Write((ushort)20);
             writer.Write((ushort)20);
-            writer.Write(Utf8FileNameFlag);
+            writer.Write(entry.Flags);
             writer.Write(entry.Method);
             writer.Write(entry.DosTime);
             writer.Write(entry.DosDate);
@@ -304,9 +386,10 @@ namespace OpenHwp.Automation.Cli
 
         private struct CentralDirectoryEntry
         {
-            public CentralDirectoryEntry(byte[] nameBytes, ushort method, uint crc, uint compressedSize, uint uncompressedSize, uint localHeaderOffset, ushort dosTime, ushort dosDate)
+            public CentralDirectoryEntry(byte[] nameBytes, ushort flags, ushort method, uint crc, uint compressedSize, uint uncompressedSize, uint localHeaderOffset, ushort dosTime, ushort dosDate)
             {
                 NameBytes = nameBytes;
+                Flags = flags;
                 Method = method;
                 Crc = crc;
                 CompressedSize = compressedSize;
@@ -318,6 +401,8 @@ namespace OpenHwp.Automation.Cli
 
             public byte[] NameBytes { get; private set; }
 
+            public ushort Flags { get; private set; }
+
             public ushort Method { get; private set; }
 
             public uint Crc { get; private set; }
@@ -327,6 +412,31 @@ namespace OpenHwp.Automation.Cli
             public uint UncompressedSize { get; private set; }
 
             public uint LocalHeaderOffset { get; private set; }
+
+            public ushort DosTime { get; private set; }
+
+            public ushort DosDate { get; private set; }
+        }
+
+        internal sealed class ArchiveEntry
+        {
+            public ArchiveEntry(string name, byte[] data, ushort method, ushort flags, ushort dosTime, ushort dosDate)
+            {
+                Name = name;
+                Data = data ?? new byte[0];
+                Method = method;
+                Flags = flags;
+                DosTime = dosTime;
+                DosDate = dosDate;
+            }
+
+            public string Name { get; private set; }
+
+            public byte[] Data { get; set; }
+
+            public ushort Method { get; private set; }
+
+            public ushort Flags { get; private set; }
 
             public ushort DosTime { get; private set; }
 

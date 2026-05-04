@@ -103,6 +103,7 @@ namespace OpenHwp.Automation.Cli
             normalized = normalized.Replace("__", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!\*)\*(?!\*)", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!_)_(?!_)", string.Empty);
+            normalized = RemoveUnsupportedSupplementarySymbols(normalized);
             normalized = HttpUtility.HtmlDecode(normalized);
 
             var parts = normalized.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
@@ -229,8 +230,23 @@ namespace OpenHwp.Automation.Cli
             normalized = normalized.Replace("__", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!\*)\*(?!\*)", string.Empty);
             normalized = Regex.Replace(normalized, @"(?<!_)_(?!_)", string.Empty);
+            normalized = RemoveUnsupportedSupplementarySymbols(normalized);
             normalized = HttpUtility.HtmlDecode(normalized);
             return normalized.Trim();
+        }
+
+        private static string RemoveUnsupportedSupplementarySymbols(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(value, @"[\uD800-\uDBFF][\uDC00-\uDFFF]", match =>
+            {
+                var codePoint = char.ConvertToUtf32(match.Value, 0);
+                return codePoint >= 0xF0000 && codePoint <= 0xFFFFD ? match.Value : string.Empty;
+            });
         }
     }
 }
