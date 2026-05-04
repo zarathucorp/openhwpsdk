@@ -817,22 +817,28 @@ namespace OpenHwp.Automation.Cli
                 if (line.Length == 0 ||
                     Regex.IsMatch(line, @"^#{1,6}\s+") ||
                     line.StartsWith("![", StringComparison.Ordinal) ||
+                    string.Equals(line, "---", StringComparison.Ordinal) ||
+                    IsMarkdownCaptionLine(line) ||
                     MarkdownTableSeparatorPattern.IsMatch(line))
+                {
+                    continue;
+                }
+
+                line = Regex.Replace(line, @"^>\s*", string.Empty).Trim();
+                if (Regex.IsMatch(line, @"^F\s+") ||
+                    line.StartsWith("⛔", StringComparison.Ordinal) ||
+                    IsMarkdownCaptionLine(line))
                 {
                     continue;
                 }
 
                 if (line.StartsWith("|", StringComparison.Ordinal) && line.Contains("|"))
                 {
-                    line = string.Join(" / ", line.Trim().Trim('|').Split('|').Select(NormalizeInline).ToArray());
+                    line = "   - " + string.Join(" / ", line.Trim().Trim('|').Split('|').Select(NormalizeInline).ToArray());
                 }
                 else
                 {
-                    line = Regex.Replace(line, @"^>\s*", string.Empty);
-                    line = Regex.Replace(line, @"^F\s+", string.Empty);
-                    line = Regex.Replace(line, @"^[-*+]\s+", "- ");
-                    line = line.Replace("❖", string.Empty);
-                    line = NormalizeInline(line);
+                    line = NormalizeProposalListLine(line);
                 }
 
                 if (line.Length > 0)
@@ -842,6 +848,39 @@ namespace OpenHwp.Automation.Cli
             }
 
             return lines;
+        }
+
+        private static string NormalizeProposalListLine(string line)
+        {
+            var value = (line ?? string.Empty).Replace("❖", string.Empty).Trim();
+            var headingMatch = Regex.Match(value, @"^[-*+]\s+◦\s*(.+)$");
+            if (headingMatch.Success)
+            {
+                return " ◦ " + NormalizeInline(headingMatch.Groups[1].Value);
+            }
+
+            var bulletMatch = Regex.Match(value, @"^[-*+]\s+(.+)$");
+            if (bulletMatch.Success)
+            {
+                return "   - " + NormalizeInline(bulletMatch.Groups[1].Value);
+            }
+
+            var circleMatch = Regex.Match(value, @"^◦\s*(.+)$");
+            if (circleMatch.Success)
+            {
+                return " ◦ " + NormalizeInline(circleMatch.Groups[1].Value);
+            }
+
+            return NormalizeInline(value);
+        }
+
+        private static bool IsMarkdownCaptionLine(string line)
+        {
+            var value = (line ?? string.Empty).Trim();
+            return value.Length > 2 &&
+                   value.StartsWith("*", StringComparison.Ordinal) &&
+                   value.EndsWith("*", StringComparison.Ordinal) &&
+                   !value.StartsWith("**", StringComparison.Ordinal);
         }
 
         private string JoinBlockSummary(string block, int maxLines)
