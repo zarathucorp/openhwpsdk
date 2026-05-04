@@ -116,6 +116,8 @@ namespace OpenHwp.Automation.Cli
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
                     return FillMarkdownTable(commandArgs, visible, keepOpen);
+                case "fill-submission-template":
+                    return FillSubmissionTemplate(commandArgs);
                 case "extract-form-map":
                     return ExtractFormMap(commandArgs);
                 case "apply-form-map":
@@ -825,6 +827,72 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int FillSubmissionTemplate(string[] args)
+        {
+            string profile = "r-and-d-startup-2026";
+            string reportPath = null;
+            var values = new List<string>();
+
+            for (var index = 1; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--profile", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --profile.");
+                        return 1;
+                    }
+
+                    index++;
+                    profile = args[index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --report.");
+                        return 1;
+                    }
+
+                    index++;
+                    reportPath = args[index];
+                    continue;
+                }
+
+                values.Add(args[index]);
+            }
+
+            if (values.Count != 3)
+            {
+                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            if (!string.Equals(profile, "r-and-d-startup-2026", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine("Unsupported submission profile: " + profile);
+                return 1;
+            }
+
+            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], reportPath);
+            Console.WriteLine(values[2]);
+            Console.WriteLine("profile=" + profile);
+            Console.WriteLine("cell_writes=" + result.CellWrites);
+            Console.WriteLine("paragraph_writes=" + result.ParagraphWrites);
+            Console.WriteLine("inserted_paragraphs=" + result.InsertedParagraphs);
+            Console.WriteLine("rebuilt_rows=" + result.RebuiltRows);
+            Console.WriteLine("missing_targets=" + result.MissingTargets.Count);
+            Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe.Count);
+
+            var layoutReportPath = string.IsNullOrWhiteSpace(reportPath)
+                ? null
+                : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(reportPath)) ?? Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(reportPath) + ".layout.md");
+            var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], layoutReportPath);
+            return result.MissingTargets.Count == 0 && result.SkippedUnsafe.Count == 0 && layoutPassed ? 0 : 2;
+        }
+
         private static int ApplyFormMap(string[] args, bool visible, bool keepOpen)
         {
             var packageMode = false;
@@ -1464,6 +1532,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
+            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
