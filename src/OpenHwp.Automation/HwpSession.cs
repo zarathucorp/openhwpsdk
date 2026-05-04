@@ -19,6 +19,7 @@ namespace OpenHwp.Automation
         private object _hwpObject;
         private bool _quitOnDispose;
         private bool _disposed;
+        private readonly IList<string> _temporaryOpenCopies = new List<string>();
 
         private HwpSession(object hwpObject, bool quitOnDispose)
         {
@@ -311,18 +312,44 @@ namespace OpenHwp.Automation
 
             var resolvedPath = Path.GetFullPath(filePath);
 
+            COMException openException = null;
             try
             {
-                var opened = Convert.ToBoolean(((dynamic)_hwpObject).Open(resolvedPath, format ?? string.Empty, options ?? string.Empty));
-                if (!opened)
+                if (TryOpenPath(resolvedPath, format, options))
                 {
-                    throw new HwpAutomationException($"Failed to open '{resolvedPath}'.");
+                    return;
                 }
             }
             catch (COMException ex)
             {
-                throw new HwpAutomationException($"Failed to open '{resolvedPath}'.", ex);
+                openException = ex;
             }
+
+            if (File.Exists(resolvedPath))
+            {
+                var temporaryPath = CreateTemporaryOpenCopy(resolvedPath);
+                try
+                {
+                    if (TryOpenPath(temporaryPath, format, options))
+                    {
+                        return;
+                    }
+                }
+                catch (COMException ex)
+                {
+                    if (openException == null)
+                    {
+                        openException = ex;
+                    }
+                }
+            }
+
+            if (openException != null)
+            {
+                throw new HwpAutomationException($"Failed to open '{resolvedPath}'.", openException);
+            }
+
+            throw new HwpAutomationException($"Failed to open '{resolvedPath}'.");
         }
 
         public void Save(string options = "")
@@ -815,7 +842,7 @@ namespace OpenHwp.Automation
                         ExecuteAction("TableDeleteCell");
                     }
 
-                    InsertPicture(path, true, 0, false, false, 0, width, height);
+                    InsertPicture(path, true, 1, false, false, 0, width, height);
                     return true;
                 });
         }
@@ -857,7 +884,7 @@ namespace OpenHwp.Automation
                         TryRunCommand("Delete");
                     }
 
-                    InsertPicture(path, true, 0, false, false, 0, width, height);
+                    InsertPicture(path, true, 1, false, false, 0, width, height);
                     return true;
                 });
         }
@@ -1246,8 +1273,43 @@ namespace OpenHwp.Automation
 
             ComHelpers.SafeRelease(_hwpObject);
             _hwpObject = null;
+            if (_quitOnDispose)
+            {
+                DeleteTemporaryOpenCopies();
+            }
+
             _disposed = true;
             GC.SuppressFinalize(this);
+        }
+
+        private bool TryOpenPath(string filePath, string format, string options)
+        {
+            return Convert.ToBoolean(((dynamic)_hwpObject).Open(filePath, format ?? string.Empty, options ?? string.Empty));
+        }
+
+        private string CreateTemporaryOpenCopy(string sourcePath)
+        {
+            var temporaryPath = Path.Combine(Path.GetTempPath(), "openhwpsdk-" + Guid.NewGuid().ToString("N") + Path.GetExtension(sourcePath));
+            File.Copy(sourcePath, temporaryPath, true);
+            _temporaryOpenCopies.Add(temporaryPath);
+            return temporaryPath;
+        }
+
+        private void DeleteTemporaryOpenCopies()
+        {
+            foreach (var temporaryPath in _temporaryOpenCopies)
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch
+                {
+                    // Best effort cleanup only.
+                }
+            }
+
+            _temporaryOpenCopies.Clear();
         }
 
         private void EnsureDocument()

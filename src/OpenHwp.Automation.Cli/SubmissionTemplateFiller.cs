@@ -18,6 +18,7 @@ namespace OpenHwp.Automation.Cli
         private static readonly Regex HtmlTagPattern = new Regex("<[^>]+>", RegexOptions.Compiled);
         private static readonly Regex MultiWhitespacePattern = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MarkdownTableSeparatorPattern = new Regex(@"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", RegexOptions.Compiled);
+        private const int RoadmapOverviewBodyCharPrId = 50;
 
         private readonly string _markdown;
         private readonly IList<IList<IList<string>>> _tables;
@@ -262,10 +263,50 @@ namespace OpenHwp.Automation.Cli
             SetCellText(18, 7, 4, CellValue(29, 1, 3));
             SetCellText(18, 7, 5, "160,000,000 원");
             SetCellText(18, 7, 7, CellValue(29, 1, 3));
-            SetCellText(18, 8, 1, JoinBlockSummary(GetMarkdownBlock(@"^### 1\. 사업화 대상 기술 정의 및 주요 특성.*?$", @"(?=^### 2\. 사업화 대상 기술이 적용된 제품)") + " " + GetMarkdownBlock(@"^### 2\. 사업화 대상 기술이 적용된 제품.*?$", @"(?=^### 3\. 규제샌드박스)"), 6));
-            SetCellText(18, 9, 1, JoinBlockSummary(GetMarkdownBlock(@"^### 사업화 추진 계획 \(개요\).*?$", @"(?=^### 기업의 사업화 추진 역량)"), 6));
-            SetCellText(18, 10, 1, JoinBlockSummary(GetMarkdownBlock(@"^### 기업의 사업화 추진 역량 \(개요\).*?$", @"(?=^### 기대효과)"), 6));
-            SetCellText(18, 11, 1, JoinBlockSummary(GetMarkdownBlock(@"^### 기대효과 \(개요\).*?$", @"(?=^## □ 사업화 로드맵 본문)"), 5));
+            SetCellLines(
+                18,
+                8,
+                1,
+                new[]
+                {
+                    "기술정의: 자체개발 임상통계 R패키지 핵심 함수를 AI agent 호출형 분석모듈로 표준화",
+                    "제품화: openstat.ai 유료 구독형 SaaS와 기관 전용 배포형 임상통계 AI agent로 고도화",
+                    "차별성: 분석엔진 호출, 데이터 검증, 통계 실행, 보고서 초안, Audit Trail을 단일 흐름으로 제공",
+                },
+                RoadmapOverviewBodyCharPrId);
+            SetCellLines(
+                18,
+                9,
+                1,
+                new[]
+                {
+                    "추진배경: 인력 중심 분석지원 업무의 반복 절차를 SW, AI agent 기반 제품 자산으로 전환",
+                    "목표: PoC 8건, AI agent 적용 분석 프로젝트 50건, Audit Trail 적용 10건, 매출 2억원",
+                    "전략: 기존 병원, 바이오, CRO 고객 기반 PoC 후 구독형, 기관계약형으로 전환",
+                },
+                RoadmapOverviewBodyCharPrId);
+            SetCellLines(
+                18,
+                10,
+                1,
+                new[]
+                {
+                    "성장전략: 의학연구 분석서비스, 오픈소스 R패키지, SaaS, 기관 맞춤형 분석웹을 제품군으로 통합",
+                    "기반: SCI급 분석지원 경험, 30만 다운로드 오픈소스 생태계, 병원, 바이오 고객 레퍼런스 보유",
+                    "확장: 일본, 중국 사용자 기반과 해외 CRO 협력 경험을 활용해 해외 진입 추진",
+                },
+                RoadmapOverviewBodyCharPrId);
+            SetCellLines(
+                18,
+                11,
+                1,
+                new[]
+                {
+                    "활용방안: 병원 연구지원, 바이오 임상시험, CRO 통계분석, 공공의료 데이터 분석으로 확장",
+                    "효과: 분석 리드타임 단축, 검토 이력 확보, 품질 재현성 향상, 반복업무 자동화",
+                    "성과: 구독형 SaaS 매출과 기관 전용 구축 매출을 병행해 후속 투자, 고용 기반 확보",
+                },
+                RoadmapOverviewBodyCharPrId);
 
             for (var row = 1; row <= 8; row++)
             {
@@ -278,6 +319,8 @@ namespace OpenHwp.Automation.Cli
             {
                 SetCellText(20, row + 1, 2, CellValue(31, row, 1));
             }
+
+            SetTableTextStyle(20, RoadmapOverviewBodyCharPrId);
         }
 
         private void FillRoadmapNarrative()
@@ -401,7 +444,7 @@ namespace OpenHwp.Automation.Cli
             SetCellText(47, 5, 15, "jhpark@zarathu.com");
         }
 
-        private void SetCellText(int tableIndex, int rowAddress, int columnAddress, string text)
+        private void SetCellText(int tableIndex, int rowAddress, int columnAddress, string text, int? charPrIdRef = null)
         {
             var cell = GetCell(tableIndex, rowAddress, columnAddress);
             if (cell == null)
@@ -410,16 +453,70 @@ namespace OpenHwp.Automation.Cli
                 return;
             }
 
-            var paragraph = GetDirectCellParagraphs(cell).FirstOrDefault(item => !item.Descendants(Hp + "tbl").Any());
-            if (paragraph == null)
+            var paragraphs = GetDirectCellParagraphs(cell).Where(item => !item.Descendants(Hp + "tbl").Any()).ToList();
+            if (paragraphs.Count == 0)
             {
                 _report.SkippedUnsafe.Add(string.Format(CultureInfo.InvariantCulture, "cell table={0} row={1} col={2} has no non-nested paragraph", tableIndex, rowAddress, columnAddress));
                 return;
             }
 
-            SetParagraphNodeText(paragraph, text);
+            SetParagraphNodeText(paragraphs[0], text, charPrIdRef);
+            paragraphs.Skip(1).Remove();
             HwpxTextLayoutHelper.ExpandRowHeightForText(cell, text);
             _report.CellWrites++;
+        }
+
+        private void SetCellLines(int tableIndex, int rowAddress, int columnAddress, IList<string> lines, int? charPrIdRef = null)
+        {
+            if (lines.Count == 0)
+            {
+                SetCellText(tableIndex, rowAddress, columnAddress, string.Empty, charPrIdRef);
+                return;
+            }
+
+            var cell = GetCell(tableIndex, rowAddress, columnAddress);
+            if (cell == null)
+            {
+                _report.MissingTargets.Add(string.Format(CultureInfo.InvariantCulture, "cell table={0} row={1} col={2}", tableIndex, rowAddress, columnAddress));
+                return;
+            }
+
+            var paragraphs = GetDirectCellParagraphs(cell).Where(item => !item.Descendants(Hp + "tbl").Any()).ToList();
+            if (paragraphs.Count == 0)
+            {
+                _report.SkippedUnsafe.Add(string.Format(CultureInfo.InvariantCulture, "cell table={0} row={1} col={2} has no non-nested paragraph", tableIndex, rowAddress, columnAddress));
+                return;
+            }
+
+            SetParagraphNodeText(paragraphs[0], lines[0], charPrIdRef);
+            paragraphs.Skip(1).Remove();
+            var current = paragraphs[0];
+            for (var index = 1; index < lines.Count; index++)
+            {
+                var paragraph = new XElement(paragraphs[0]);
+                SetParagraphNodeText(paragraph, lines[index], charPrIdRef);
+                current.AddAfterSelf(paragraph);
+                current = paragraph;
+                _report.InsertedParagraphs++;
+            }
+
+            HwpxTextLayoutHelper.ExpandRowHeightForText(cell, string.Join("\n", lines.ToArray()));
+            _report.CellWrites++;
+        }
+
+        private void SetTableTextStyle(int tableIndex, int charPrIdRef)
+        {
+            var table = GetTable(tableIndex);
+            if (table == null)
+            {
+                _report.MissingTargets.Add("table " + tableIndex.ToString(CultureInfo.InvariantCulture));
+                return;
+            }
+
+            foreach (var run in table.Descendants(Hp + "run"))
+            {
+                run.SetAttributeValue("charPrIDRef", charPrIdRef.ToString(CultureInfo.InvariantCulture));
+            }
         }
 
         private void RebuildTableDataRows(int tableIndex, int firstDataRow, IEnumerable<IList<string>> sourceRows, IDictionary<int, CellProjection> columnMap, int templateRowIndex)
@@ -664,7 +761,7 @@ namespace OpenHwp.Automation.Cli
             return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
         }
 
-        private static void SetParagraphNodeText(XElement paragraph, string text)
+        private static void SetParagraphNodeText(XElement paragraph, string text, int? charPrIdRef = null)
         {
             var textNodes = paragraph.Descendants(Hp + "t").ToList();
             XElement firstTextNode;
@@ -692,6 +789,14 @@ namespace OpenHwp.Automation.Cli
             else
             {
                 firstTextNode = textNodes[0];
+            }
+
+            if (charPrIdRef.HasValue)
+            {
+                foreach (var run in paragraph.Elements(Hp + "run"))
+                {
+                    run.SetAttributeValue("charPrIDRef", charPrIdRef.Value.ToString(CultureInfo.InvariantCulture));
+                }
             }
 
             firstTextNode.Value = NormalizePackageWriteText(text);
