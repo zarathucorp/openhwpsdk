@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using OpenHwp.Automation;
 
@@ -119,7 +120,7 @@ namespace OpenHwp.Automation.Cli
                 case "fill-markdown-table":
                     return FillMarkdownTable(commandArgs, visible, keepOpen);
                 case "fill-submission-template":
-                    return FillSubmissionTemplate(commandArgs);
+                    return FillSubmissionTemplate(commandArgs, visible, keepOpen);
                 case "extract-form-map":
                     return ExtractFormMap(commandArgs);
                 case "apply-form-map":
@@ -844,7 +845,7 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
-        private static int FillSubmissionTemplate(string[] args)
+        private static int FillSubmissionTemplate(string[] args, bool visible, bool keepOpen)
         {
             string profile = "r-and-d-startup-2026";
             string reportPath = null;
@@ -893,21 +894,85 @@ namespace OpenHwp.Automation.Cli
                 return 1;
             }
 
-            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], reportPath);
+            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2]);
+            SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
+            var imageWritesPassed = ApplySubmissionTemplateImages(result, values[2], visible, keepOpen);
+            SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
             Console.WriteLine(values[2]);
             Console.WriteLine("profile=" + profile);
+            Console.WriteLine("markdown_tables=" + result.MarkdownTables);
+            Console.WriteLine("markdown_tables_rendered=" + result.RenderedMarkdownTables);
+            Console.WriteLine("markdown_images=" + result.MarkdownImages);
+            Console.WriteLine("image_writes=" + result.ImageWrites.Count);
+            Console.WriteLine("image_writes_applied=" + result.ImageWrites.Count(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)));
             Console.WriteLine("cell_writes=" + result.CellWrites);
             Console.WriteLine("paragraph_writes=" + result.ParagraphWrites);
             Console.WriteLine("inserted_paragraphs=" + result.InsertedParagraphs);
             Console.WriteLine("rebuilt_rows=" + result.RebuiltRows);
             Console.WriteLine("missing_targets=" + result.MissingTargets.Count);
             Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe.Count);
+            Console.WriteLine("skipped_unsupported=" + result.SkippedUnsupported.Count);
 
             var layoutReportPath = string.IsNullOrWhiteSpace(reportPath)
                 ? null
                 : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(reportPath)) ?? Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(reportPath) + ".layout.md");
             var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], layoutReportPath);
-            return result.MissingTargets.Count == 0 && result.SkippedUnsafe.Count == 0 && layoutPassed ? 0 : 2;
+            var unmappedImages = SubmissionTemplateFiller.CountUnmappedMarkdownImages(result);
+            return result.MissingTargets.Count == 0 &&
+                   result.SkippedUnsafe.Count == 0 &&
+                   result.SkippedUnsupported.Count == 0 &&
+                   unmappedImages == 0 &&
+                   imageWritesPassed &&
+                   layoutPassed ? 0 : 2;
+        }
+
+        private static bool ApplySubmissionTemplateImages(SubmissionTemplateFiller.FillReport result, string outputPath, bool visible, bool keepOpen)
+        {
+            if (result.ImageWrites.Count == 0)
+            {
+                return result.MarkdownImages == 0;
+            }
+
+            try
+            {
+                using (var hwp = CreateSession(visible, keepOpen))
+                {
+                    ConfigureSessionForAutomation(hwp);
+                    OpenSessionDocument(hwp, outputPath, string.Empty, "forceopen:true");
+                    foreach (var image in result.ImageWrites)
+                    {
+                        if (string.IsNullOrWhiteSpace(image.ResolvedPath) || !File.Exists(image.ResolvedPath))
+                        {
+                            image.Status = "failed";
+                            image.Note = "image file was not found: " + image.ResolvedPath;
+                            continue;
+                        }
+
+                        if (hwp.InsertPictureAtTextAnchor(image.AnchorText, image.ResolvedPath, image.Width, image.Height, true))
+                        {
+                            image.Status = "applied";
+                            image.Note = "inserted by HWP COM InsertPicture";
+                        }
+                        else
+                        {
+                            image.Status = "failed";
+                            image.Note = "anchor was not found or InsertPicture failed";
+                        }
+                    }
+
+                    hwp.SaveAs(outputPath, ResolveSaveFormat(outputPath), string.Empty);
+                }
+            }
+            catch (Exception ex)
+            {
+                foreach (var image in result.ImageWrites.Where(item => string.Equals(item.Status, "pending", StringComparison.OrdinalIgnoreCase)))
+                {
+                    image.Status = "failed";
+                    image.Note = ex.GetType().Name + ": " + ex.Message;
+                }
+            }
+
+            return result.ImageWrites.All(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase));
         }
 
         private static int ApplyFormMap(string[] args, bool visible, bool keepOpen)
@@ -961,21 +1026,20 @@ namespace OpenHwp.Automation.Cli
             if (packageMode)
             {
                 result = HwpxFormMap.ApplyPackage(values[0], values[1], values[2], maxOperations);
+                HwpxFormMap.WriteApplyReport(result, values[0], values[1], values[2], "package", reportPath);
                 Console.WriteLine(values[2]);
                 Console.WriteLine("attempted=" + result.Attempted);
                 Console.WriteLine("applied=" + result.Applied);
                 Console.WriteLine("failed=" + result.Failed);
                 Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe);
-                var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], reportPath);
-                return result.Failed == 0 && layoutPassed ? 0 : 2;
+                var layoutReportPath = string.IsNullOrWhiteSpace(reportPath)
+                    ? null
+                    : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(reportPath)) ?? Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(reportPath) + ".layout.md");
+                var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], layoutReportPath);
+                return result.Failed == 0 && result.SkippedUnsafe == 0 && layoutPassed ? 0 : 2;
             }
 
-            if (!string.IsNullOrWhiteSpace(reportPath))
-            {
-                Console.Error.WriteLine("--report is only supported with --package.");
-                return 1;
-            }
-
+            HwpxFormMap.WriteApplyReport(new HwpxFormMap.ApplyResult(), values[0], values[1], values[2], "hwp-com started", reportPath);
             using (var hwp = CreateSession(visible, keepOpen))
             {
                 ConfigureSessionForAutomation(hwp);
@@ -984,12 +1048,14 @@ namespace OpenHwp.Automation.Cli
                 hwp.SaveAs(values[2], ResolveSaveFormat(values[2]), string.Empty);
             }
 
+            HwpxFormMap.WriteApplyReport(result, values[0], values[1], values[2], "hwp-com", reportPath);
+
             Console.WriteLine(values[2]);
             Console.WriteLine("attempted=" + result.Attempted);
             Console.WriteLine("applied=" + result.Applied);
             Console.WriteLine("failed=" + result.Failed);
             Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe);
-            return result.Failed == 0 ? 0 : 2;
+            return result.Failed == 0 && result.SkippedUnsafe == 0 ? 0 : 2;
         }
 
         private static int ProbeFormMap(string[] args, bool visible, bool keepOpen)

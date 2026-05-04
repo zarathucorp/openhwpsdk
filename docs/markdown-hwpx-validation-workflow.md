@@ -63,10 +63,12 @@ Apply the filled map through HWP automation when image insertion or editor-backe
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_applied.hwpx"
 ```
 
-For text-only map writes, use package mode. This preserves the original HWPX package entries, applies XML text changes without COM, and runs layout validation after writing:
+Add `--report "<report.md>"` to write attempted/applied/failed/skipped details for HWP COM writes, including `writeImage` operations.
+
+For text-only map writes, use package mode. This preserves the original HWPX package entries, applies XML text changes without COM, and runs layout validation after writing. Package mode reports skipped image writes instead of trying to inject BinData directly; the layout report is written as `*.layout.md` next to the apply report.
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_package_applied.hwpx" --report "test\out\template_form_map_package_layout.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_package_applied.hwpx" --report "test\out\template_form_map_package_apply.md"
 ```
 
 For the current submission form, use the dedicated profile command instead of hand-editing every map entry:
@@ -74,6 +76,8 @@ For the current submission form, use the dedicated profile command instead of ha
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --report "test\out\submission_filled_report.md"
 ```
+
+The submission profile renders supported Markdown tables as HWPX table objects and queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. If COM cannot start, the report still lists pending image anchors and unmapped image references.
 
 Example cell write:
 

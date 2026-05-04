@@ -24,38 +24,33 @@ namespace OpenHwp.Automation.Cli
                 issues.Add(string.Format("FAIL: table count decreased: template={0}, candidate={1}", templateTables.Count, candidateTables.Count));
             }
 
-            var comparableCount = Math.Min(templateTables.Count, candidateTables.Count);
             var changedCoreTables = 0;
-            for (var index = 0; index < comparableCount; index++)
+            var candidateIndex = 0;
+            for (var index = 0; index < templateTables.Count; index++)
             {
                 var original = templateTables[index];
-                var current = candidateTables[index];
-                var rowChanged = Math.Abs(current.RowCount - original.RowCount);
-                var columnChanged = current.ColumnCount != original.ColumnCount;
-                var widthChanged = Math.Abs(current.Width - original.Width) > 50;
-                var borderChanged = !string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal);
-                var labelChanged = original.FirstLabels.Count > 0 &&
-                                   current.FirstLabels.Count > 0 &&
-                                   !string.Equals(original.FirstLabels[0], current.FirstLabels[0], StringComparison.Ordinal);
-
-                if (columnChanged || widthChanged || borderChanged || labelChanged)
+                var matchedIndex = FindMatchingCoreTable(candidateTables, original, candidateIndex);
+                if (matchedIndex < 0)
                 {
                     changedCoreTables++;
                     issues.Add(string.Format(
-                        "FAIL: table {0} structure/style changed: rows {1}->{2}, cols {3}->{4}, width {5}->{6}, border {7}->{8}, first-label '{9}'->'{10}'",
+                        "FAIL: template table {0} was not preserved in candidate order: cols {1}, width {2}, border {3}, first-label '{4}'",
                         index,
-                        original.RowCount,
-                        current.RowCount,
                         original.ColumnCount,
-                        current.ColumnCount,
                         original.Width,
-                        current.Width,
                         original.BorderFillId,
-                        current.BorderFillId,
-                        Abbreviate(original.FirstLabels.FirstOrDefault() ?? string.Empty),
-                        Abbreviate(current.FirstLabels.FirstOrDefault() ?? string.Empty)));
+                        Abbreviate(original.FirstLabels.FirstOrDefault() ?? string.Empty)));
                     continue;
                 }
+
+                if (matchedIndex > candidateIndex)
+                {
+                    issues.Add(string.Format("WARN: {0} inserted table(s) before template table {1}", matchedIndex - candidateIndex, index));
+                }
+
+                var current = candidateTables[matchedIndex];
+                candidateIndex = matchedIndex + 1;
+                var rowChanged = Math.Abs(current.RowCount - original.RowCount);
 
                 if (rowChanged > Math.Max(3, original.RowCount))
                 {
@@ -107,6 +102,41 @@ namespace OpenHwp.Automation.Cli
 
             Console.Write(report.ToString());
             return !issues.Any(issue => issue.StartsWith("FAIL:", StringComparison.Ordinal));
+        }
+
+        private static int FindMatchingCoreTable(IList<TableSignature> candidateTables, TableSignature original, int startIndex)
+        {
+            for (var index = startIndex; index < candidateTables.Count; index++)
+            {
+                if (IsCoreTableMatch(original, candidateTables[index]))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool IsCoreTableMatch(TableSignature original, TableSignature current)
+        {
+            if (current.ColumnCount != original.ColumnCount)
+            {
+                return false;
+            }
+
+            if (Math.Abs(current.Width - original.Width) > 50)
+            {
+                return false;
+            }
+
+            if (!string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return original.FirstLabels.Count == 0 ||
+                   current.FirstLabels.Count == 0 ||
+                   string.Equals(original.FirstLabels[0], current.FirstLabels[0], StringComparison.Ordinal);
         }
 
         private static XDocument ReadSection(string hwpxPath)

@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenHWP SDK Windows CLI"
+  short_description: "Run OpenHWP SDK CLI safely on Windows"
+  default_prompt: "Use $openhwpsdk-windows-cli to build and operate the OpenHWP SDK CLI on Windows."

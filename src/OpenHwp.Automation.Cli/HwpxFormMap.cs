@@ -132,6 +132,42 @@ namespace OpenHwp.Automation.Cli
             return result;
         }
 
+        public static void WriteApplyReport(ApplyResult result, string inputHwpxPath, string mapPath, string outputHwpxPath, string mode, string reportPath)
+        {
+            if (result == null || string.IsNullOrWhiteSpace(reportPath))
+            {
+                return;
+            }
+
+            var report = new StringBuilder();
+            report.AppendLine("# HWPX Form Map Apply Report");
+            report.AppendLine();
+            report.AppendLine("- mode: " + (mode ?? string.Empty));
+            report.AppendLine("- input: " + Path.GetFullPath(inputHwpxPath));
+            report.AppendLine("- map: " + Path.GetFullPath(mapPath));
+            report.AppendLine("- output: " + Path.GetFullPath(outputHwpxPath));
+            report.AppendLine("- attempted: " + result.Attempted.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- applied: " + result.Applied.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- failed: " + result.Failed.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- skipped: " + result.SkippedUnsafe.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine();
+            report.AppendLine("| kind | id | target | status | note |");
+            report.AppendLine("| --- | --- | --- | --- | --- |");
+
+            foreach (var operation in result.Operations)
+            {
+                AppendProbeRow(report, operation.Kind, operation.Id, operation.Target, operation.Status, operation.Note);
+            }
+
+            var directory = Path.GetDirectoryName(Path.GetFullPath(reportPath));
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(true));
+        }
+
         public static ApplyResult ApplyPackage(string inputHwpxPath, string mapPath, string outputHwpxPath, int maxOperations)
         {
             var entries = SimpleZipArchive.ReadAll(Path.GetFullPath(inputHwpxPath));
@@ -772,6 +808,8 @@ namespace OpenHwp.Automation.Cli
             var tableIndex = GetRequiredInt(cell, "tableIndex");
             var row = GetRequiredInt(cell, "row");
             var col = GetRequiredInt(cell, "col");
+            var id = GetString(cell, "id");
+            var target = string.Format(CultureInfo.InvariantCulture, "table={0}, row={1}, col={2}", tableIndex, row, col);
             var writeSupported = GetBool(cell, "writeSupported", true);
             if (!writeSupported)
             {
@@ -784,6 +822,7 @@ namespace OpenHwp.Automation.Cli
 
                     result.SkippedUnsafe++;
                     Console.WriteLine("skip unsupported cell write: table={0}, row={1}, col={2}", tableIndex, row, col);
+                    RecordApplyOperation(result, "cell", id, target, "SKIPPED", "writeSupported=false");
                 }
 
                 return;
@@ -824,10 +863,12 @@ namespace OpenHwp.Automation.Cli
                     {
                         result.Failed++;
                         Console.WriteLine("  failed");
+                        RecordApplyOperation(result, "cell", id, target, "FAILED", "SetTableCellText returned false");
                     }
                     else
                     {
                         result.Applied++;
+                        RecordApplyOperation(result, "cell", id, target, "APPLIED", "text");
                     }
                 }
             }
@@ -852,10 +893,12 @@ namespace OpenHwp.Automation.Cli
                     {
                         result.Failed++;
                         Console.WriteLine("  failed");
+                        RecordApplyOperation(result, "cell", id, target, "FAILED", "InsertPictureInTableCell returned false");
                     }
                     else
                     {
                         result.Applied++;
+                        RecordApplyOperation(result, "cell", id, target, "APPLIED", "image " + resolvedPath);
                     }
                 }
             }
@@ -870,6 +913,8 @@ namespace OpenHwp.Automation.Cli
             }
 
             var occurrence = GetInt(anchor, "occurrence", 0);
+            var id = GetString(anchor, "id");
+            var target = string.Format(CultureInfo.InvariantCulture, "occurrence={0}, text={1}", occurrence, Abbreviate(currentText, 60));
             var writeSupported = GetBool(anchor, "writeSupported", true);
             if (!writeSupported)
             {
@@ -882,6 +927,7 @@ namespace OpenHwp.Automation.Cli
 
                     result.SkippedUnsafe++;
                     Console.WriteLine("skip unsupported anchor write: anchor={0}", Abbreviate(currentText, 80));
+                    RecordApplyOperation(result, "anchor", id, target, "SKIPPED", "writeSupported=false");
                 }
 
                 return;
@@ -905,10 +951,12 @@ namespace OpenHwp.Automation.Cli
                     {
                         result.Failed++;
                         Console.WriteLine("  failed");
+                        RecordApplyOperation(result, "anchor", id, target, "FAILED", "WriteTextAtTextAnchor returned false");
                     }
                     else
                     {
                         result.Applied++;
+                        RecordApplyOperation(result, "anchor", id, target, "APPLIED", "text");
                     }
                 }
             }
@@ -939,15 +987,24 @@ namespace OpenHwp.Automation.Cli
             {
                 result.Failed++;
                 Console.WriteLine("  failed");
+                RecordApplyOperation(result, "anchor", id, target, "FAILED", "InsertPictureAtTextAnchor returned false");
             }
             else
             {
                 result.Applied++;
+                RecordApplyOperation(result, "anchor", id, target, "APPLIED", "image " + resolvedPath);
             }
         }
 
         private static void ApplyPackageCellWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement cell, ApplyResult result, int maxOperations)
         {
+            var id = GetString(cell, "id");
+            var target = string.Format(
+                CultureInfo.InvariantCulture,
+                "table={0}, row={1}, col={2}",
+                GetString(cell, "tableIndex"),
+                GetString(cell, "row"),
+                GetString(cell, "col"));
             var writeSupported = GetBool(cell, "writeSupported", true);
             if (!writeSupported)
             {
@@ -960,6 +1017,7 @@ namespace OpenHwp.Automation.Cli
 
                     result.SkippedUnsafe++;
                     Console.WriteLine("skip unsupported package cell write: id={0}", GetString(cell, "id"));
+                    RecordApplyOperation(result, "cell", id, target, "SKIPPED", "writeSupported=false");
                 }
 
                 return;
@@ -982,11 +1040,13 @@ namespace OpenHwp.Automation.Cli
                     {
                         result.Applied++;
                         Console.WriteLine("package set cell: id={0}, text={1}", GetString(cell, "id"), Abbreviate(text, 80));
+                        RecordApplyOperation(result, "cell", id, target, "APPLIED", "package text");
                     }
                     else
                     {
                         result.Failed++;
                         Console.WriteLine("package set cell failed: id={0}, reason={1}", GetString(cell, "id"), reason);
+                        RecordApplyOperation(result, "cell", id, target, "FAILED", reason);
                     }
                 }
             }
@@ -1001,11 +1061,19 @@ namespace OpenHwp.Automation.Cli
 
                 result.SkippedUnsafe++;
                 Console.WriteLine("skip package cell image write: id={0}", GetString(cell, "id"));
+                RecordApplyOperation(result, "cell", id, target, "SKIPPED", "package mode does not support image writes; use HWP COM apply-form-map");
             }
         }
 
         private static void ApplyPackageAnchorWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement anchor, ApplyResult result, int maxOperations)
         {
+            var id = GetString(anchor, "id");
+            var currentText = (anchor.Element("currentText") == null ? string.Empty : anchor.Element("currentText").Value).Trim();
+            var target = string.Format(
+                CultureInfo.InvariantCulture,
+                "occurrence={0}, text={1}",
+                GetString(anchor, "occurrence"),
+                Abbreviate(currentText, 60));
             var writeSupported = GetBool(anchor, "writeSupported", true);
             if (!writeSupported)
             {
@@ -1018,6 +1086,7 @@ namespace OpenHwp.Automation.Cli
 
                     result.SkippedUnsafe++;
                     Console.WriteLine("skip unsupported package anchor write: id={0}", GetString(anchor, "id"));
+                    RecordApplyOperation(result, "anchor", id, target, "SKIPPED", "writeSupported=false");
                 }
 
                 return;
@@ -1040,11 +1109,13 @@ namespace OpenHwp.Automation.Cli
                     {
                         result.Applied++;
                         Console.WriteLine("package set anchor: id={0}, text={1}", GetString(anchor, "id"), Abbreviate(text, 80));
+                        RecordApplyOperation(result, "anchor", id, target, "APPLIED", "package text");
                     }
                     else
                     {
                         result.Failed++;
                         Console.WriteLine("package set anchor failed: id={0}, reason={1}", GetString(anchor, "id"), reason);
+                        RecordApplyOperation(result, "anchor", id, target, "FAILED", reason);
                     }
                 }
             }
@@ -1059,6 +1130,7 @@ namespace OpenHwp.Automation.Cli
 
                 result.SkippedUnsafe++;
                 Console.WriteLine("skip package anchor image write: id={0}", GetString(anchor, "id"));
+                RecordApplyOperation(result, "anchor", id, target, "SKIPPED", "package mode does not support image writes; use HWP COM apply-form-map");
             }
         }
 
@@ -1542,6 +1614,18 @@ namespace OpenHwp.Automation.Cli
             return true;
         }
 
+        private static void RecordApplyOperation(ApplyResult result, string kind, string id, string target, string status, string note)
+        {
+            result.Operations.Add(new ApplyOperation
+            {
+                Kind = kind ?? string.Empty,
+                Id = id ?? string.Empty,
+                Target = target ?? string.Empty,
+                Status = status ?? string.Empty,
+                Note = note ?? string.Empty
+            });
+        }
+
         private static bool LimitReached(ApplyResult result, int maxOperations)
         {
             return maxOperations > 0 && result.Attempted >= maxOperations;
@@ -1665,6 +1749,11 @@ namespace OpenHwp.Automation.Cli
 
         internal sealed class ApplyResult
         {
+            public ApplyResult()
+            {
+                Operations = new List<ApplyOperation>();
+            }
+
             public int Attempted { get; set; }
 
             public int Applied { get; set; }
@@ -1672,6 +1761,21 @@ namespace OpenHwp.Automation.Cli
             public int Failed { get; set; }
 
             public int SkippedUnsafe { get; set; }
+
+            public IList<ApplyOperation> Operations { get; private set; }
+        }
+
+        internal sealed class ApplyOperation
+        {
+            public string Kind { get; set; }
+
+            public string Id { get; set; }
+
+            public string Target { get; set; }
+
+            public string Status { get; set; }
+
+            public string Note { get; set; }
         }
 
         internal sealed class ProbeResult

@@ -17,21 +17,30 @@ namespace OpenHwp.Automation.Cli
         private static readonly Regex HtmlBreakPattern = new Regex(@"<br\s*/?>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex HtmlTagPattern = new Regex("<[^>]+>", RegexOptions.Compiled);
         private static readonly Regex MultiWhitespacePattern = new Regex(@"\s+", RegexOptions.Compiled);
+        private static readonly Regex MarkdownImagePattern = new Regex(@"!\[([^\]]*)\]\(([^)]+)\)", RegexOptions.Compiled);
         private static readonly Regex MarkdownTableSeparatorPattern = new Regex(@"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", RegexOptions.Compiled);
         private const int RoadmapOverviewBodyCharPrId = 50;
+        private const int DefaultMarkdownImageWidth = 135;
+        private const int DefaultMarkdownImageHeight = 80;
 
         private readonly string _markdown;
+        private readonly string _markdownPath;
         private readonly IList<IList<IList<string>>> _tables;
+        private readonly IList<MarkdownImageReference> _imageReferences;
         private readonly string _templatePath;
         private readonly IDictionary<string, byte[]> _entries;
         private readonly XDocument _section;
         private readonly FillReport _report = new FillReport();
+        private int _nextImageAnchorIndex;
+        private long _nextGeneratedObjectId;
 
         private SubmissionTemplateFiller(string templatePath, string markdownPath)
         {
             _templatePath = Path.GetFullPath(templatePath);
+            _markdownPath = Path.GetFullPath(markdownPath);
             _markdown = ReadTextFile(markdownPath);
             _tables = MarkdownTableParser.ParseTables(_markdown);
+            _imageReferences = ParseMarkdownImages(_markdown);
             _entries = SimpleZipArchive.ReadAll(_templatePath);
 
             byte[] sectionBytes;
@@ -41,14 +50,20 @@ namespace OpenHwp.Automation.Cli
             }
 
             _section = XDocument.Parse(Encoding.UTF8.GetString(sectionBytes), LoadOptions.PreserveWhitespace);
+            _nextGeneratedObjectId = Math.Max(1, MaxNumericId(_section) + 1);
+            _report.MarkdownTables = _tables.Count;
+            _report.MarkdownImages = _imageReferences.Count;
+            foreach (var image in _imageReferences)
+            {
+                _report.MarkdownImageReferences.Add(image);
+            }
         }
 
-        public static FillReport Fill(string templatePath, string markdownPath, string outputPath, string reportPath)
+        public static FillReport Fill(string templatePath, string markdownPath, string outputPath)
         {
             var filler = new SubmissionTemplateFiller(templatePath, markdownPath);
             filler.FillKnownProfile();
             filler.Save(outputPath);
-            filler.WriteReport(templatePath, markdownPath, outputPath, reportPath);
             return filler._report;
         }
 
@@ -59,9 +74,9 @@ namespace OpenHwp.Automation.Cli
             FillCompanyStatus();
             FillBudgetPlan();
             FillTrackOverview();
-            FillRoadmapNarrative();
             FillAttachments();
             FillConsentForms();
+            FillRoadmapNarrative();
         }
 
         private void FillCoverPage()
@@ -614,7 +629,7 @@ namespace OpenHwp.Automation.Cli
                 SetParagraphText(dashIndex, string.Empty);
             }
 
-            SetParagraphBlock(bulletIndex, NormalizeBlockLines(GetMarkdownBlock(startPattern, endPattern)));
+            SetParagraphBlock(bulletIndex, GetMarkdownBlock(startPattern, endPattern));
         }
 
         private void SetExpectedEffectSection(string startPattern, string endPattern)
@@ -639,16 +654,11 @@ namespace OpenHwp.Automation.Cli
                 SetParagraphText(dashIndex, string.Empty);
             }
 
-            SetParagraphBlock(bulletIndex, NormalizeBlockLines(GetMarkdownBlock(startPattern, endPattern)));
+            SetParagraphBlock(bulletIndex, GetMarkdownBlock(startPattern, endPattern));
         }
 
-        private void SetParagraphBlock(int paragraphIndex, IList<string> lines)
+        private void SetParagraphBlock(int paragraphIndex, string block)
         {
-            if (lines.Count == 0)
-            {
-                return;
-            }
-
             var paragraphs = RootParagraphs().ToList();
             if (paragraphIndex >= paragraphs.Count)
             {
@@ -656,13 +666,51 @@ namespace OpenHwp.Automation.Cli
                 return;
             }
 
-            var anchor = paragraphs[paragraphIndex];
-            SetParagraphNodeText(anchor, lines[0]);
-            var current = anchor;
-            for (var index = 1; index < lines.Count; index++)
+            var items = NormalizeBlockItems(block);
+            if (items.Count == 0)
             {
+                return;
+            }
+
+            var anchor = paragraphs[paragraphIndex];
+            var current = anchor;
+            var anchorUsed = false;
+
+            foreach (var item in items)
+            {
+                if (item.Kind == BlockItemKind.Table)
+                {
+                    if (!anchorUsed)
+                    {
+                        SetParagraphNodeText(anchor, string.Empty);
+                        anchorUsed = true;
+                    }
+
+                    var tableParagraph = CreateMarkdownTableParagraph(item.TableRows);
+                    if (tableParagraph == null)
+                    {
+                        _report.SkippedUnsupported.Add("markdown table could not be rendered because no reference table was available");
+                        continue;
+                    }
+
+                    current.AddAfterSelf(tableParagraph);
+                    current = tableParagraph;
+                    _report.RenderedMarkdownTables++;
+                    _report.RenderedMarkdownTableRows += item.TableRows.Count;
+                    continue;
+                }
+
+                var text = item.Kind == BlockItemKind.Image ? item.Image.AnchorText : item.Text;
+                if (!anchorUsed)
+                {
+                    SetParagraphNodeText(anchor, text);
+                    anchorUsed = true;
+                    current = anchor;
+                    continue;
+                }
+
                 var clone = new XElement(anchor);
-                SetParagraphNodeText(clone, lines[index]);
+                SetParagraphNodeText(clone, text);
                 current.AddAfterSelf(clone);
                 current = clone;
                 _report.InsertedParagraphs++;
@@ -759,6 +807,349 @@ namespace OpenHwp.Automation.Cli
         {
             var subList = cell.Element(Hp + "subList");
             return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
+        }
+
+        private IList<BlockItem> NormalizeBlockItems(string block)
+        {
+            var items = new List<BlockItem>();
+            var lines = (block ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var line = lines[index].Trim();
+                if (line.Length == 0 ||
+                    Regex.IsMatch(line, @"^#{1,6}\s+") ||
+                    string.Equals(line, "---", StringComparison.Ordinal) ||
+                    IsMarkdownCaptionLine(line))
+                {
+                    continue;
+                }
+
+                string imageAlt;
+                string imagePath;
+                if (TryParseMarkdownImageLine(line, out imageAlt, out imagePath))
+                {
+                    items.Add(BlockItem.ForImage(CreateImageWriteOperation(imageAlt, imagePath)));
+                    continue;
+                }
+
+                if (IsMarkdownTableLine(line))
+                {
+                    var tableLines = new List<string>();
+                    while (index < lines.Length && IsMarkdownTableLine(lines[index].Trim()))
+                    {
+                        tableLines.Add(lines[index].Trim());
+                        index++;
+                    }
+
+                    index--;
+                    var tableRows = ParseMarkdownTableLines(tableLines);
+                    if (tableRows.Count > 0)
+                    {
+                        items.Add(BlockItem.ForTable(tableRows));
+                    }
+
+                    continue;
+                }
+
+                if (MarkdownTableSeparatorPattern.IsMatch(line))
+                {
+                    continue;
+                }
+
+                line = Regex.Replace(line, @"^>\s*", string.Empty).Trim();
+                if (Regex.IsMatch(line, @"^F\s+") ||
+                    line.StartsWith("⛔", StringComparison.Ordinal) ||
+                    IsMarkdownCaptionLine(line))
+                {
+                    continue;
+                }
+
+                line = NormalizeProposalListLine(line);
+                if (line.Length > 0)
+                {
+                    items.Add(BlockItem.ForText(line));
+                }
+            }
+
+            return items;
+        }
+
+        private ImageWriteOperation CreateImageWriteOperation(string altText, string sourcePath)
+        {
+            _nextImageAnchorIndex++;
+            var operation = new ImageWriteOperation
+            {
+                AltText = NormalizeInline(altText),
+                SourcePath = (sourcePath ?? string.Empty).Trim(),
+                ResolvedPath = ResolveMarkdownRelativePath(sourcePath),
+                AnchorText = "[[openhwpsdk-image-" + _nextImageAnchorIndex.ToString("0000", CultureInfo.InvariantCulture) + "]]",
+                Width = DefaultMarkdownImageWidth,
+                Height = DefaultMarkdownImageHeight,
+                Status = "pending",
+                Note = "queued for HWP COM InsertPicture"
+            };
+
+            _report.ImageWrites.Add(operation);
+            return operation;
+        }
+
+        private string ResolveMarkdownRelativePath(string sourcePath)
+        {
+            var path = (sourcePath ?? string.Empty).Trim().Replace('/', Path.DirectorySeparatorChar);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            return Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_markdownPath) ?? Directory.GetCurrentDirectory(), path));
+        }
+
+        private static bool TryParseMarkdownImageLine(string line, out string altText, out string sourcePath)
+        {
+            altText = string.Empty;
+            sourcePath = string.Empty;
+            var match = MarkdownImagePattern.Match(line ?? string.Empty);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            altText = match.Groups[1].Value;
+            sourcePath = match.Groups[2].Value;
+            return true;
+        }
+
+        private static bool IsMarkdownTableLine(string line)
+        {
+            var value = (line ?? string.Empty).Trim();
+            return value.StartsWith("|", StringComparison.Ordinal) && value.Contains("|");
+        }
+
+        private static IList<IList<string>> ParseMarkdownTableLines(IEnumerable<string> lines)
+        {
+            var rows = new List<IList<string>>();
+            foreach (var raw in lines)
+            {
+                var line = (raw ?? string.Empty).Trim().Trim('|');
+                if (line.Length == 0 || IsMarkdownTableSeparator(line))
+                {
+                    continue;
+                }
+
+                rows.Add(line.Split('|').Select(NormalizeInline).ToList());
+            }
+
+            return rows;
+        }
+
+        private static bool IsMarkdownTableSeparator(string tableLine)
+        {
+            foreach (var character in tableLine ?? string.Empty)
+            {
+                if (character != '-' && character != ':' && character != '|' && character != ' ')
+                {
+                    return false;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(tableLine);
+        }
+
+        private XElement CreateMarkdownTableParagraph(IList<IList<string>> sourceRows)
+        {
+            if (sourceRows == null || sourceRows.Count == 0)
+            {
+                return null;
+            }
+
+            var columnCount = Math.Max(1, sourceRows.Select(row => row.Count).DefaultIfEmpty(1).Max());
+            var referenceTable = FindMarkdownTableReference(columnCount);
+            if (referenceTable == null)
+            {
+                return null;
+            }
+
+            var referenceParagraph = referenceTable.Ancestors(Hp + "p").FirstOrDefault();
+            if (referenceParagraph == null)
+            {
+                return null;
+            }
+
+            var paragraph = new XElement(referenceParagraph);
+            paragraph.SetAttributeValue("id", NextGeneratedObjectId());
+            paragraph.Elements(Hp + "linesegarray").Remove();
+
+            var table = paragraph.Descendants(Hp + "tbl").FirstOrDefault();
+            if (table == null)
+            {
+                return null;
+            }
+
+            table.SetAttributeValue("id", NextGeneratedObjectId());
+            table.SetAttributeValue("rowCnt", sourceRows.Count.ToString(CultureInfo.InvariantCulture));
+            table.SetAttributeValue("colCnt", columnCount.ToString(CultureInfo.InvariantCulture));
+
+            var existingRows = table.Elements(Hp + "tr").ToList();
+            if (existingRows.Count == 0)
+            {
+                return null;
+            }
+
+            var headerTemplate = existingRows[0];
+            var bodyTemplate = existingRows.Count > 1 ? existingRows[1] : existingRows[0];
+            var tableWidth = GetTableWidth(referenceTable);
+            var columnWidths = BuildMarkdownTableColumnWidths(referenceTable, columnCount, tableWidth);
+            table.Elements(Hp + "tr").Remove();
+
+            for (var rowIndex = 0; rowIndex < sourceRows.Count; rowIndex++)
+            {
+                var templateRow = rowIndex == 0 ? headerTemplate : bodyTemplate;
+                table.Add(CreateMarkdownTableRow(templateRow, rowIndex, sourceRows[rowIndex], columnCount, columnWidths));
+            }
+
+            return paragraph;
+        }
+
+        private XElement CreateMarkdownTableRow(XElement templateRow, int rowIndex, IList<string> sourceRow, int columnCount, IList<int> columnWidths)
+        {
+            var row = new XElement(templateRow);
+            var templateCells = templateRow.Elements(Hp + "tc").ToList();
+            row.Elements(Hp + "tc").Remove();
+
+            for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
+            {
+                var templateCell = templateCells.Count == 0 ? null : templateCells[Math.Min(columnIndex, templateCells.Count - 1)];
+                if (templateCell == null)
+                {
+                    continue;
+                }
+
+                row.Add(CreateMarkdownTableCell(
+                    templateCell,
+                    rowIndex,
+                    columnIndex,
+                    columnWidths[Math.Min(columnIndex, columnWidths.Count - 1)],
+                    columnIndex < sourceRow.Count ? sourceRow[columnIndex] : string.Empty));
+            }
+
+            return row;
+        }
+
+        private XElement CreateMarkdownTableCell(XElement templateCell, int rowIndex, int columnIndex, int width, string text)
+        {
+            var cell = new XElement(templateCell);
+            EnsureCellChild(cell, "cellAddr").SetAttributeValue("rowAddr", rowIndex.ToString(CultureInfo.InvariantCulture));
+            cell.Element(Hp + "cellAddr").SetAttributeValue("colAddr", columnIndex.ToString(CultureInfo.InvariantCulture));
+            EnsureCellChild(cell, "cellSpan").SetAttributeValue("rowSpan", "1");
+            cell.Element(Hp + "cellSpan").SetAttributeValue("colSpan", "1");
+            EnsureCellChild(cell, "cellSz").SetAttributeValue("width", width.ToString(CultureInfo.InvariantCulture));
+
+            var paragraphs = GetDirectCellParagraphs(cell).Where(item => !item.Descendants(Hp + "tbl").Any()).ToList();
+            if (paragraphs.Count > 0)
+            {
+                paragraphs[0].SetAttributeValue("id", NextGeneratedObjectId());
+                SetParagraphNodeText(paragraphs[0], text);
+                paragraphs.Skip(1).Remove();
+            }
+
+            HwpxTextLayoutHelper.ExpandRowHeightForText(cell, text);
+            return cell;
+        }
+
+        private static XElement EnsureCellChild(XElement cell, string localName)
+        {
+            var child = cell.Element(Hp + localName);
+            if (child != null)
+            {
+                return child;
+            }
+
+            child = new XElement(Hp + localName);
+            cell.Add(child);
+            return child;
+        }
+
+        private XElement FindMarkdownTableReference(int columnCount)
+        {
+            var tables = _section.Descendants(Hp + "tbl")
+                .Where(table => !HasMergedCells(table) && table.Elements(Hp + "tr").Count() >= 2)
+                .ToList();
+
+            return tables.FirstOrDefault(table => MaxColumnCount(table) == columnCount) ??
+                   tables.FirstOrDefault(table => MaxColumnCount(table) > columnCount) ??
+                   tables.FirstOrDefault();
+        }
+
+        private static bool HasMergedCells(XElement table)
+        {
+            return table.Descendants(Hp + "tc").Any(cell =>
+            {
+                var span = cell.Element(Hp + "cellSpan");
+                return span != null && (GetInt(span, "rowSpan", 1) > 1 || GetInt(span, "colSpan", 1) > 1);
+            });
+        }
+
+        private static int MaxColumnCount(XElement table)
+        {
+            return table.Elements(Hp + "tr").Select(row => row.Elements(Hp + "tc").Count()).DefaultIfEmpty(0).Max();
+        }
+
+        private static int GetTableWidth(XElement table)
+        {
+            var size = table == null ? null : table.Element(Hp + "sz");
+            if (size != null)
+            {
+                var width = GetInt(size, "width", 0);
+                if (width > 0)
+                {
+                    return width;
+                }
+            }
+
+            return table == null
+                ? 0
+                : table.Descendants(Hp + "cellSz").Select(cell => GetInt(cell, "width", 0)).DefaultIfEmpty(0).Max();
+        }
+
+        private static IList<int> BuildMarkdownTableColumnWidths(XElement referenceTable, int columnCount, int tableWidth)
+        {
+            var firstRow = referenceTable.Elements(Hp + "tr").FirstOrDefault();
+            var referenceWidths = firstRow == null
+                ? new List<int>()
+                : firstRow.Elements(Hp + "tc")
+                    .Select(cell =>
+                    {
+                        var size = cell.Element(Hp + "cellSz");
+                        return size == null ? 0 : GetInt(size, "width", 0);
+                    })
+                    .Where(width => width > 0)
+                    .ToList();
+
+            if (referenceWidths.Count == columnCount)
+            {
+                return referenceWidths;
+            }
+
+            var width = tableWidth > 0 ? tableWidth : 45000;
+            var baseWidth = Math.Max(1000, width / Math.Max(1, columnCount));
+            var widths = Enumerable.Repeat(baseWidth, columnCount).ToList();
+            var remainder = width - (baseWidth * columnCount);
+            if (widths.Count > 0)
+            {
+                widths[widths.Count - 1] += remainder;
+            }
+
+            return widths;
+        }
+
+        private string NextGeneratedObjectId()
+        {
+            var value = _nextGeneratedObjectId;
+            _nextGeneratedObjectId++;
+            return value.ToString(CultureInfo.InvariantCulture);
         }
 
         private static void SetParagraphNodeText(XElement paragraph, string text, int? charPrIdRef = null)
@@ -1053,12 +1444,19 @@ namespace OpenHwp.Automation.Cli
             SimpleZipArchive.WriteAllPreservingTemplate(_templatePath, outputPath, _entries);
         }
 
-        private void WriteReport(string templatePath, string markdownPath, string outputPath, string reportPath)
+        public static void WriteReport(FillReport fillReport, string templatePath, string markdownPath, string outputPath, string reportPath)
         {
             if (string.IsNullOrWhiteSpace(reportPath))
             {
                 return;
             }
+
+            var appliedImages = fillReport.ImageWrites.Count(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase));
+            var failedImages = fillReport.ImageWrites.Count(item => string.Equals(item.Status, "failed", StringComparison.OrdinalIgnoreCase));
+            var pendingImages = fillReport.ImageWrites.Count(item => string.Equals(item.Status, "pending", StringComparison.OrdinalIgnoreCase));
+            var mappedImageCount = fillReport.ImageWrites.Count;
+            var unmappedImages = FindUnmappedMarkdownImages(fillReport);
+            var unmappedImageCount = unmappedImages.Count;
 
             var report = new StringBuilder();
             report.AppendLine("# Submission Template Fill Report");
@@ -1066,29 +1464,81 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- template: " + Path.GetFullPath(templatePath));
             report.AppendLine("- markdown: " + Path.GetFullPath(markdownPath));
             report.AppendLine("- output: " + Path.GetFullPath(outputPath));
-            report.AppendLine("- markdown tables: " + _tables.Count.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- cell writes: " + _report.CellWrites.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- paragraph writes: " + _report.ParagraphWrites.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- inserted paragraphs: " + _report.InsertedParagraphs.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- rebuilt rows: " + _report.RebuiltRows.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- missing targets: " + _report.MissingTargets.Count.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- skipped unsafe: " + _report.SkippedUnsafe.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown tables: " + fillReport.MarkdownTables.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown tables rendered as HWP tables: " + fillReport.RenderedMarkdownTables.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown table rows rendered: " + fillReport.RenderedMarkdownTableRows.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown images: " + fillReport.MarkdownImages.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- image anchors queued for HWP COM: " + mappedImageCount.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- image writes applied: " + appliedImages.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- image writes failed: " + failedImages.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- image writes pending: " + pendingImages.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown images not mapped by profile: " + unmappedImageCount.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- cell writes: " + fillReport.CellWrites.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- paragraph writes: " + fillReport.ParagraphWrites.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- inserted paragraphs: " + fillReport.InsertedParagraphs.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- rebuilt rows: " + fillReport.RebuiltRows.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- missing targets: " + fillReport.MissingTargets.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- skipped unsafe: " + fillReport.SkippedUnsafe.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- skipped unsupported: " + fillReport.SkippedUnsupported.Count.ToString(CultureInfo.InvariantCulture));
 
-            if (_report.MissingTargets.Count > 0)
+            if (fillReport.ImageWrites.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Image Writes");
+                report.AppendLine();
+                report.AppendLine("| anchor | status | path | note |");
+                report.AppendLine("| --- | --- | --- | --- |");
+                foreach (var item in fillReport.ImageWrites)
+                {
+                    report.Append("| ");
+                    report.Append(EscapeMarkdownTable(item.AnchorText));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(item.Status));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(item.SourcePath));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(item.Note));
+                    report.AppendLine(" |");
+                }
+            }
+
+            if (unmappedImageCount > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Markdown Images Not Mapped");
+                report.AppendLine();
+                report.AppendLine("These image references were present in the Markdown source but were not queued for HWP COM insertion by the current profile.");
+                foreach (var item in unmappedImages)
+                {
+                    report.AppendLine("- line " + item.LineNumber.ToString(CultureInfo.InvariantCulture) + ": " + item.SourcePath);
+                }
+            }
+
+            if (fillReport.MissingTargets.Count > 0)
             {
                 report.AppendLine();
                 report.AppendLine("## Missing Targets");
-                foreach (var item in _report.MissingTargets)
+                foreach (var item in fillReport.MissingTargets)
                 {
                     report.AppendLine("- " + item);
                 }
             }
 
-            if (_report.SkippedUnsafe.Count > 0)
+            if (fillReport.SkippedUnsafe.Count > 0)
             {
                 report.AppendLine();
                 report.AppendLine("## Skipped Unsafe");
-                foreach (var item in _report.SkippedUnsafe)
+                foreach (var item in fillReport.SkippedUnsafe)
+                {
+                    report.AppendLine("- " + item);
+                }
+            }
+
+            if (fillReport.SkippedUnsupported.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Skipped Unsupported");
+                foreach (var item in fillReport.SkippedUnsupported)
                 {
                     report.AppendLine("- " + item);
                 }
@@ -1101,6 +1551,55 @@ namespace OpenHwp.Automation.Cli
             }
 
             File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(true));
+        }
+
+        public static int CountUnmappedMarkdownImages(FillReport fillReport)
+        {
+            return FindUnmappedMarkdownImages(fillReport).Count;
+        }
+
+        private static IList<MarkdownImageReference> FindUnmappedMarkdownImages(FillReport fillReport)
+        {
+            var mappedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var image in fillReport.ImageWrites)
+            {
+                var key = NormalizeImageSourceKey(image.SourcePath);
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                mappedCounts[key] = mappedCounts.ContainsKey(key) ? mappedCounts[key] + 1 : 1;
+            }
+
+            var unmapped = new List<MarkdownImageReference>();
+            foreach (var image in fillReport.MarkdownImageReferences)
+            {
+                var key = NormalizeImageSourceKey(image.SourcePath);
+                if (!string.IsNullOrWhiteSpace(key) && mappedCounts.ContainsKey(key) && mappedCounts[key] > 0)
+                {
+                    mappedCounts[key]--;
+                    continue;
+                }
+
+                unmapped.Add(image);
+            }
+
+            return unmapped;
+        }
+
+        private static string NormalizeImageSourceKey(string sourcePath)
+        {
+            return (sourcePath ?? string.Empty).Trim().Replace('\\', '/');
+        }
+
+        private static string EscapeMarkdownTable(string value)
+        {
+            return (value ?? string.Empty)
+                .Replace("\\", "\\\\")
+                .Replace("|", "\\|")
+                .Replace("\r", " ")
+                .Replace("\n", " ");
         }
 
         private static byte[] SerializeXmlDocument(XDocument document)
@@ -1122,6 +1621,41 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static IList<MarkdownImageReference> ParseMarkdownImages(string markdown)
+        {
+            var images = new List<MarkdownImageReference>();
+            var lines = (markdown ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (var index = 0; index < lines.Length; index++)
+            {
+                foreach (Match match in MarkdownImagePattern.Matches(lines[index]))
+                {
+                    images.Add(new MarkdownImageReference
+                    {
+                        LineNumber = index + 1,
+                        AltText = NormalizeInline(match.Groups[1].Value),
+                        SourcePath = (match.Groups[2].Value ?? string.Empty).Trim()
+                    });
+                }
+            }
+
+            return images;
+        }
+
+        private static long MaxNumericId(XDocument document)
+        {
+            long max = 0;
+            foreach (var attribute in document.Descendants().Attributes("id"))
+            {
+                long value;
+                if (long.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > max)
+                {
+                    max = value;
+                }
+            }
+
+            return max;
+        }
+
         private static string ReadTextFile(string path)
         {
             try
@@ -1136,6 +1670,14 @@ namespace OpenHwp.Automation.Cli
 
         internal sealed class FillReport
         {
+            public int MarkdownTables { get; set; }
+
+            public int RenderedMarkdownTables { get; set; }
+
+            public int RenderedMarkdownTableRows { get; set; }
+
+            public int MarkdownImages { get; set; }
+
             public int CellWrites { get; set; }
 
             public int ParagraphWrites { get; set; }
@@ -1148,10 +1690,92 @@ namespace OpenHwp.Automation.Cli
 
             public IList<string> SkippedUnsafe { get; private set; }
 
+            public IList<string> SkippedUnsupported { get; private set; }
+
+            public IList<MarkdownImageReference> MarkdownImageReferences { get; private set; }
+
+            public IList<ImageWriteOperation> ImageWrites { get; private set; }
+
             public FillReport()
             {
                 MissingTargets = new List<string>();
                 SkippedUnsafe = new List<string>();
+                SkippedUnsupported = new List<string>();
+                MarkdownImageReferences = new List<MarkdownImageReference>();
+                ImageWrites = new List<ImageWriteOperation>();
+            }
+        }
+
+        internal sealed class MarkdownImageReference
+        {
+            public int LineNumber { get; set; }
+
+            public string AltText { get; set; }
+
+            public string SourcePath { get; set; }
+        }
+
+        internal sealed class ImageWriteOperation
+        {
+            public string AltText { get; set; }
+
+            public string SourcePath { get; set; }
+
+            public string ResolvedPath { get; set; }
+
+            public string AnchorText { get; set; }
+
+            public int Width { get; set; }
+
+            public int Height { get; set; }
+
+            public string Status { get; set; }
+
+            public string Note { get; set; }
+        }
+
+        private enum BlockItemKind
+        {
+            Text,
+            Table,
+            Image
+        }
+
+        private sealed class BlockItem
+        {
+            public BlockItemKind Kind { get; private set; }
+
+            public string Text { get; private set; }
+
+            public IList<IList<string>> TableRows { get; private set; }
+
+            public ImageWriteOperation Image { get; private set; }
+
+            public static BlockItem ForText(string text)
+            {
+                return new BlockItem
+                {
+                    Kind = BlockItemKind.Text,
+                    Text = text ?? string.Empty
+                };
+            }
+
+            public static BlockItem ForTable(IList<IList<string>> tableRows)
+            {
+                return new BlockItem
+                {
+                    Kind = BlockItemKind.Table,
+                    TableRows = tableRows
+                };
+            }
+
+            public static BlockItem ForImage(ImageWriteOperation image)
+            {
+                return new BlockItem
+                {
+                    Kind = BlockItemKind.Image,
+                    Image = image
+                };
             }
         }
 

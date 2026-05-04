@@ -98,11 +98,11 @@ Template HWPX files can first be mapped from the real package XML, then filled t
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe extract-form-map C:\temp\template.hwpx C:\temp\template-form-map.xml
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-form-map C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\template-probe.md
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\filled.hwpx
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\filled-package.hwpx --report C:\temp\filled-package-layout.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\filled.hwpx --report C:\temp\filled-apply.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\filled-package.hwpx --report C:\temp\filled-package-apply.md
 ```
 
-Edit only the generated map's `writeText` and `writeImage` elements. The map records the full HWPX package structure (`content.hpf`, manifest/spine, XML parts, previews, metadata entries) and marks write candidates from every XML part that contains HWP paragraph/table text. Use `probe-form-map` before HWP-backed writing to confirm every mapped cell/anchor can be selected in HWP. Use `apply-form-map --package` for text-only writes; use the HWP-backed path for image insertion and editor-backed behavior.
+Edit only the generated map's `writeText` and `writeImage` elements. The map records the full HWPX package structure (`content.hpf`, manifest/spine, XML parts, previews, metadata entries) and marks write candidates from every XML part that contains HWP paragraph/table text. Use `probe-form-map` before HWP-backed writing to confirm every mapped cell/anchor can be selected in HWP. Use `apply-form-map --package` for text-only writes; use the HWP-backed path for image insertion and editor-backed behavior. `--report` now writes apply attempted/applied/failed/skipped details for both COM and package modes; package-mode layout validation is written next to it as `*.layout.md`.
 
 Markdown 내용을 한 줄씩 `InsertText`로 문서 끝에 추가:
 
