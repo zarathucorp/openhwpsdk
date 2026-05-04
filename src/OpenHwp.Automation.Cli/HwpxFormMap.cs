@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
+using System.Xml;
 using OpenHwp.Automation;
 
 namespace OpenHwp.Automation.Cli
@@ -128,6 +129,48 @@ namespace OpenHwp.Automation.Cli
                 ApplyAnchorWrites(hwp, anchor, mapDirectory, result, maxOperations);
             }
 
+            return result;
+        }
+
+        public static ApplyResult ApplyPackage(string inputHwpxPath, string mapPath, string outputHwpxPath, int maxOperations)
+        {
+            var entries = SimpleZipArchive.ReadAll(Path.GetFullPath(inputHwpxPath));
+            var xmlDocuments = ParseXmlDocuments(entries);
+            var mapDocument = XDocument.Load(mapPath, LoadOptions.PreserveWhitespace);
+            var touchedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new ApplyResult();
+
+            foreach (var cell in mapDocument.Descendants("cell"))
+            {
+                if (LimitReached(result, maxOperations))
+                {
+                    break;
+                }
+
+                ApplyPackageCellWrites(xmlDocuments, touchedParts, cell, result, maxOperations);
+            }
+
+            foreach (var anchor in mapDocument.Descendants("anchor"))
+            {
+                if (LimitReached(result, maxOperations))
+                {
+                    break;
+                }
+
+                ApplyPackageAnchorWrites(xmlDocuments, touchedParts, anchor, result, maxOperations);
+            }
+
+            foreach (var partPath in touchedParts)
+            {
+                entries[partPath] = SerializeXmlDocument(xmlDocuments[partPath]);
+            }
+
+            if (touchedParts.Count > 0)
+            {
+                UpdatePreviewText(entries, xmlDocuments);
+            }
+
+            SimpleZipArchive.WriteAll(outputHwpxPath, entries);
             return result;
         }
 
@@ -895,6 +938,443 @@ namespace OpenHwp.Automation.Cli
             {
                 result.Applied++;
             }
+        }
+
+        private static void ApplyPackageCellWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement cell, ApplyResult result, int maxOperations)
+        {
+            var writeSupported = GetBool(cell, "writeSupported", true);
+            if (!writeSupported)
+            {
+                if (HasTextWrite(cell) || HasImageWrite(cell))
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    result.SkippedUnsafe++;
+                    Console.WriteLine("skip unsupported package cell write: id={0}", GetString(cell, "id"));
+                }
+
+                return;
+            }
+
+            var writeText = cell.Element("writeText");
+            if (writeText != null)
+            {
+                var shouldClear = GetBool(writeText, "clear", false);
+                var text = writeText.Value ?? string.Empty;
+                if (shouldClear || text.Length > 0)
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    string reason;
+                    if (TryApplyPackageCellText(xmlDocuments, touchedParts, cell, text, out reason))
+                    {
+                        result.Applied++;
+                        Console.WriteLine("package set cell: id={0}, text={1}", GetString(cell, "id"), Abbreviate(text, 80));
+                    }
+                    else
+                    {
+                        result.Failed++;
+                        Console.WriteLine("package set cell failed: id={0}, reason={1}", GetString(cell, "id"), reason);
+                    }
+                }
+            }
+
+            var writeImage = cell.Element("writeImage");
+            if (writeImage != null && !string.IsNullOrWhiteSpace(GetString(writeImage, "path")))
+            {
+                if (!BeginOperation(result, maxOperations))
+                {
+                    return;
+                }
+
+                result.SkippedUnsafe++;
+                Console.WriteLine("skip package cell image write: id={0}", GetString(cell, "id"));
+            }
+        }
+
+        private static void ApplyPackageAnchorWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement anchor, ApplyResult result, int maxOperations)
+        {
+            var writeSupported = GetBool(anchor, "writeSupported", true);
+            if (!writeSupported)
+            {
+                if (HasTextWrite(anchor) || HasImageWrite(anchor))
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    result.SkippedUnsafe++;
+                    Console.WriteLine("skip unsupported package anchor write: id={0}", GetString(anchor, "id"));
+                }
+
+                return;
+            }
+
+            var writeText = anchor.Element("writeText");
+            if (writeText != null)
+            {
+                var shouldClear = GetBool(writeText, "clear", false);
+                var text = writeText.Value ?? string.Empty;
+                if (shouldClear || text.Length > 0)
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    string reason;
+                    if (TryApplyPackageAnchorText(xmlDocuments, touchedParts, anchor, text, out reason))
+                    {
+                        result.Applied++;
+                        Console.WriteLine("package set anchor: id={0}, text={1}", GetString(anchor, "id"), Abbreviate(text, 80));
+                    }
+                    else
+                    {
+                        result.Failed++;
+                        Console.WriteLine("package set anchor failed: id={0}, reason={1}", GetString(anchor, "id"), reason);
+                    }
+                }
+            }
+
+            var writeImage = anchor.Element("writeImage");
+            if (writeImage != null && !string.IsNullOrWhiteSpace(GetString(writeImage, "path")))
+            {
+                if (!BeginOperation(result, maxOperations))
+                {
+                    return;
+                }
+
+                result.SkippedUnsafe++;
+                Console.WriteLine("skip package anchor image write: id={0}", GetString(anchor, "id"));
+            }
+        }
+
+        private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, out string reason)
+        {
+            var partPath = ResolveMapPartPath(mapCell);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map cell does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement table;
+            if (!TryResolvePackageTable(document, mapCell, out table, out reason))
+            {
+                return false;
+            }
+
+            XElement targetCell;
+            if (!TryResolvePackageTableCell(table, mapCell, out targetCell, out reason))
+            {
+                return false;
+            }
+
+            if (!TrySetCellTextPreservingNestedContent(targetCell, text, out reason))
+            {
+                return false;
+            }
+
+            touchedParts.Add(partPath);
+            return true;
+        }
+
+        private static bool TryApplyPackageAnchorText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapAnchor, string text, out string reason)
+        {
+            var partPath = ResolveMapPartPath(mapAnchor);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map anchor does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement paragraph;
+            if (!TryResolvePackageAnchorParagraph(document, mapAnchor, out paragraph, out reason))
+            {
+                return false;
+            }
+
+            var replaceAnchorText = GetBool(mapAnchor.Element("writeText"), "replaceAnchorText", true);
+            var finalText = replaceAnchorText ? text : TextOf(paragraph) + text;
+            if (!TrySetParagraphText(paragraph, finalText, out reason))
+            {
+                return false;
+            }
+
+            touchedParts.Add(partPath);
+            return true;
+        }
+
+        private static string ResolveMapPartPath(XElement mapElement)
+        {
+            var partPath = GetString(mapElement, "partPath");
+            if (!string.IsNullOrWhiteSpace(partPath))
+            {
+                return partPath;
+            }
+
+            var table = mapElement.Ancestors("table").FirstOrDefault();
+            return table == null ? string.Empty : GetString(table, "partPath");
+        }
+
+        private static bool TryResolvePackageTable(XDocument document, XElement mapCell, out XElement table, out string reason)
+        {
+            var mapTable = mapCell.Ancestors("table").FirstOrDefault();
+            var tableOrderInPart = mapTable == null ? -1 : GetInt(mapTable, "tableOrderInPart", -1);
+            var tables = document.Descendants(Hp + "tbl").ToList();
+            if (tableOrderInPart >= 0 && tableOrderInPart < tables.Count)
+            {
+                table = tables[tableOrderInPart];
+                reason = string.Empty;
+                return true;
+            }
+
+            var tableIndex = GetInt(mapCell, "tableIndex", -1);
+            if (tableIndex >= 0 && tableIndex < tables.Count)
+            {
+                table = tables[tableIndex];
+                reason = string.Empty;
+                return true;
+            }
+
+            table = null;
+            reason = "table was not found in package part";
+            return false;
+        }
+
+        private static bool TryResolvePackageTableCell(XElement table, XElement mapCell, out XElement targetCell, out string reason)
+        {
+            var rowOrder = GetInt(mapCell, "rowOrder", -1);
+            var cellOrder = GetInt(mapCell, "cellOrder", -1);
+            var rows = table.Elements(Hp + "tr").ToList();
+            if (rowOrder >= 0 && rowOrder < rows.Count)
+            {
+                var cells = rows[rowOrder].Elements(Hp + "tc").ToList();
+                if (cellOrder >= 0 && cellOrder < cells.Count)
+                {
+                    targetCell = cells[cellOrder];
+                    reason = string.Empty;
+                    return true;
+                }
+            }
+
+            var row = GetInt(mapCell, "row", -1);
+            var col = GetInt(mapCell, "col", -1);
+            targetCell = table.Descendants(Hp + "tc").FirstOrDefault(cell =>
+            {
+                var cellAddr = cell.Element(Hp + "cellAddr");
+                return cellAddr != null &&
+                       GetInt(cellAddr, "rowAddr", -1) == row &&
+                       GetInt(cellAddr, "colAddr", -1) == col;
+            });
+
+            if (targetCell != null)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            reason = "cell was not found in package table";
+            return false;
+        }
+
+        private static bool TryResolvePackageAnchorParagraph(XDocument document, XElement mapAnchor, out XElement paragraph, out string reason)
+        {
+            var paragraphIndex = GetInt(mapAnchor, "paragraphIndex", -1);
+            var paragraphs = document.Descendants(Hp + "p").ToList();
+            var currentText = NormalizeText(mapAnchor.Element("currentText") == null ? string.Empty : mapAnchor.Element("currentText").Value);
+
+            if (paragraphIndex >= 0 && paragraphIndex < paragraphs.Count)
+            {
+                paragraph = paragraphs[paragraphIndex];
+                if (string.IsNullOrWhiteSpace(currentText) || string.Equals(NormalizeText(TextOf(paragraph)), currentText, StringComparison.Ordinal))
+                {
+                    reason = string.Empty;
+                    return true;
+                }
+            }
+
+            var occurrence = GetInt(mapAnchor, "occurrence", 0);
+            paragraph = FindParagraphByTextOccurrence(paragraphs, currentText, occurrence);
+            if (paragraph != null)
+            {
+                reason = string.Empty;
+                return true;
+            }
+
+            reason = "anchor paragraph was not found";
+            return false;
+        }
+
+        private static XElement FindParagraphByTextOccurrence(IList<XElement> paragraphs, string text, int occurrence)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            var seen = 0;
+            foreach (var paragraph in paragraphs)
+            {
+                if (!string.Equals(NormalizeText(TextOf(paragraph)), text, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (seen == occurrence)
+                {
+                    return paragraph;
+                }
+
+                seen++;
+            }
+
+            return null;
+        }
+
+        private static bool TrySetCellTextPreservingNestedContent(XElement cell, string text, out string reason)
+        {
+            var paragraph = GetWritableCellParagraph(cell);
+            if (paragraph == null)
+            {
+                reason = "cell has no non-nested writable paragraph";
+                return false;
+            }
+
+            return TrySetParagraphText(paragraph, text, out reason);
+        }
+
+        private static XElement GetWritableCellParagraph(XElement cell)
+        {
+            var subList = cell.Element(Hp + "subList");
+            var paragraphs = subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
+            return paragraphs.FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
+        }
+
+        private static bool TrySetParagraphText(XElement paragraph, string text, out string reason)
+        {
+            if (paragraph == null)
+            {
+                reason = "paragraph is missing";
+                return false;
+            }
+
+            var textNodes = paragraph.Descendants(Hp + "t").ToList();
+            XElement firstTextNode;
+            if (textNodes.Count == 0)
+            {
+                var run = paragraph.Elements(Hp + "run").FirstOrDefault();
+                if (run == null)
+                {
+                    run = new XElement(Hp + "run");
+                    var lineSegArray = paragraph.Element(Hp + "linesegarray");
+                    if (lineSegArray == null)
+                    {
+                        paragraph.Add(run);
+                    }
+                    else
+                    {
+                        lineSegArray.AddBeforeSelf(run);
+                    }
+                }
+
+                firstTextNode = new XElement(Hp + "t");
+                run.Add(firstTextNode);
+                textNodes.Add(firstTextNode);
+            }
+            else
+            {
+                firstTextNode = textNodes[0];
+            }
+
+            firstTextNode.Value = NormalizePackageWriteText(text);
+            for (var index = 1; index < textNodes.Count; index++)
+            {
+                textNodes[index].Value = string.Empty;
+            }
+
+            var staleLineSegments = paragraph.Elements(Hp + "linesegarray").ToList();
+            foreach (var lineSegments in staleLineSegments)
+            {
+                lineSegments.Remove();
+            }
+
+            reason = string.Empty;
+            return true;
+        }
+
+        private static void UpdatePreviewText(IDictionary<string, byte[]> entries, IDictionary<string, XDocument> xmlDocuments)
+        {
+            if (!entries.ContainsKey("Preview/PrvText.txt"))
+            {
+                return;
+            }
+
+            var builder = new StringBuilder();
+            foreach (var partName in GetWritablePartNames(entries, xmlDocuments))
+            {
+                XDocument document;
+                if (!xmlDocuments.TryGetValue(partName, out document))
+                {
+                    continue;
+                }
+
+                foreach (var paragraph in document.Descendants(Hp + "p"))
+                {
+                    var text = NormalizeText(TextOf(paragraph));
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        builder.AppendLine(text);
+                    }
+                }
+            }
+
+            entries["Preview/PrvText.txt"] = new UTF8Encoding(false).GetBytes(builder.ToString());
+        }
+
+        private static byte[] SerializeXmlDocument(XDocument document)
+        {
+            using (var output = new MemoryStream())
+            {
+                var settings = new XmlWriterSettings
+                {
+                    Encoding = new UTF8Encoding(false),
+                    OmitXmlDeclaration = document.Declaration == null
+                };
+
+                using (var writer = XmlWriter.Create(output, settings))
+                {
+                    document.Save(writer);
+                }
+
+                return output.ToArray();
+            }
+        }
+
+        private static string NormalizePackageWriteText(string text)
+        {
+            return (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
         }
 
         private static void ProbeCell(HwpSession hwp, XElement cell, ProbeResult result, StringBuilder report)

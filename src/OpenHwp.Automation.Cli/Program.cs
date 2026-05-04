@@ -827,16 +827,44 @@ namespace OpenHwp.Automation.Cli
 
         private static int ApplyFormMap(string[] args, bool visible, bool keepOpen)
         {
-            if (args.Length < 4)
+            var packageMode = false;
+            string reportPath = null;
+            var values = new List<string>();
+
+            for (var index = 1; index < args.Length; index++)
             {
-                Console.Error.WriteLine("Usage: apply-form-map <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations]");
+                if (string.Equals(args[index], "--package", StringComparison.OrdinalIgnoreCase))
+                {
+                    packageMode = true;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --report.");
+                        return 1;
+                    }
+
+                    index++;
+                    reportPath = args[index];
+                    continue;
+                }
+
+                values.Add(args[index]);
+            }
+
+            if (values.Count < 3 || values.Count > 4)
+            {
+                Console.Error.WriteLine("Usage: apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
                 return 1;
             }
 
             var maxOperations = 0;
-            if (args.Length >= 5)
+            if (values.Count == 4)
             {
-                maxOperations = ParseIntArgument(args[4], "maxOperations");
+                maxOperations = ParseIntArgument(values[3], "maxOperations");
                 if (maxOperations < 0)
                 {
                     Console.Error.WriteLine("maxOperations must be zero or greater.");
@@ -845,15 +873,33 @@ namespace OpenHwp.Automation.Cli
             }
 
             HwpxFormMap.ApplyResult result;
+            if (packageMode)
+            {
+                result = HwpxFormMap.ApplyPackage(values[0], values[1], values[2], maxOperations);
+                Console.WriteLine(values[2]);
+                Console.WriteLine("attempted=" + result.Attempted);
+                Console.WriteLine("applied=" + result.Applied);
+                Console.WriteLine("failed=" + result.Failed);
+                Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe);
+                var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], reportPath);
+                return result.Failed == 0 && layoutPassed ? 0 : 2;
+            }
+
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                Console.Error.WriteLine("--report is only supported with --package.");
+                return 1;
+            }
+
             using (var hwp = CreateSession(visible, keepOpen))
             {
                 ConfigureSessionForAutomation(hwp);
-                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
-                result = HwpxFormMap.Apply(hwp, args[2], maxOperations);
-                hwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
+                OpenSessionDocument(hwp, values[0], string.Empty, "forceopen:true");
+                result = HwpxFormMap.Apply(hwp, values[1], maxOperations);
+                hwp.SaveAs(values[2], ResolveSaveFormat(values[2]), string.Empty);
             }
 
-            Console.WriteLine(args[3]);
+            Console.WriteLine(values[2]);
             Console.WriteLine("attempted=" + result.Attempted);
             Console.WriteLine("applied=" + result.Applied);
             Console.WriteLine("failed=" + result.Failed);
@@ -1419,7 +1465,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
-            Console.WriteLine("  [--visible] [--keep-open] apply-form-map <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations]");
+            Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
