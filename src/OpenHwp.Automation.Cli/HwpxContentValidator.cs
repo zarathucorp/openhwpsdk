@@ -52,6 +52,11 @@ namespace OpenHwp.Automation.Cli
                 warnings.Add("WARN: repeated guide-like text: " + Abbreviate(duplicate, 80));
             }
 
+            foreach (var overflow in FindPotentialOverflows(entries))
+            {
+                warnings.Add("WARN: possible cell text overflow: " + overflow);
+            }
+
             var report = new StringBuilder();
             report.AppendLine("# HWPX Content Validation");
             report.AppendLine();
@@ -128,6 +133,32 @@ namespace OpenHwp.Automation.Cli
             }
 
             return builder.ToString();
+        }
+
+        private static IEnumerable<string> FindPotentialOverflows(IDictionary<string, byte[]> entries)
+        {
+            foreach (var entry in entries.OrderBy(item => item.Key, StringComparer.Ordinal))
+            {
+                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                XDocument document;
+                try
+                {
+                    document = XDocument.Parse(Encoding.UTF8.GetString(entry.Value), LoadOptions.PreserveWhitespace);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (var warning in HwpxTextLayoutHelper.FindPotentialOverflows(document, entry.Key))
+                {
+                    yield return warning;
+                }
+            }
         }
 
         private static IEnumerable<string> FindRepeatedGuideLines(string text)

@@ -395,6 +395,7 @@ namespace OpenHwp.Automation.Cli
             }
 
             SetParagraphNodeText(paragraph, text);
+            HwpxTextLayoutHelper.ExpandRowHeightForText(cell, text);
             _report.CellWrites++;
         }
 
@@ -455,6 +456,7 @@ namespace OpenHwp.Automation.Cli
             if (paragraph != null)
             {
                 SetParagraphNodeText(paragraph, text);
+                HwpxTextLayoutHelper.ExpandRowHeightForText(cell, text);
             }
         }
 

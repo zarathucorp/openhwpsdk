@@ -1095,6 +1095,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
+            HwpxTextLayoutHelper.ExpandRowHeightForText(targetCell, text);
             touchedParts.Add(partPath);
             return true;
         }

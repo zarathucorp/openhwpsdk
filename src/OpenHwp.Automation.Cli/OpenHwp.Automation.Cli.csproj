@@ -42,6 +42,7 @@
     <Compile Include="HwpxFormMap.cs" />
     <Compile Include="HwpxContentValidator.cs" />
     <Compile Include="HwpxLayoutValidator.cs" />
+    <Compile Include="HwpxTextLayoutHelper.cs" />
     <Compile Include="ComOperationWatchdog.cs" />
     <Compile Include="MarkdownTableParser.cs" />
     <Compile Include="MarkdownTextConverter.cs" />
