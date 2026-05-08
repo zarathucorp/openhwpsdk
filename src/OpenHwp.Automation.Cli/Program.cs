@@ -900,6 +900,13 @@ namespace OpenHwp.Automation.Cli
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
             Console.WriteLine(values[2]);
             Console.WriteLine("profile=" + profile);
+            if (result.TemplateCompatibility != null)
+            {
+                Console.WriteLine("template_compatibility=" + result.TemplateCompatibility.Status);
+                Console.WriteLine("template_tables_observed=" + result.TemplateCompatibility.TemplateTableCount);
+                Console.WriteLine("template_tables_expected_min=" + result.TemplateCompatibility.ExpectedMinimumTableCount);
+            }
+
             Console.WriteLine("markdown_tables=" + result.MarkdownTables);
             Console.WriteLine("markdown_tables_rendered=" + result.RenderedMarkdownTables);
             Console.WriteLine("markdown_images=" + result.MarkdownImages);

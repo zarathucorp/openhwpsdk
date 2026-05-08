@@ -22,6 +22,9 @@ namespace OpenHwp.Automation.Cli
         private const int RoadmapOverviewBodyCharPrId = 50;
         private const int DefaultMarkdownImageWidth = 135;
         private const int DefaultMarkdownImageHeight = 80;
+        private const int ExpectedProfileTableCount = 48;
+        private const int HighestProfileTableIndex = 47;
+        private const int PartialCompatibilityMinimumTableCount = 21;
 
         private readonly string _markdown;
         private readonly string _markdownPath;
@@ -51,6 +54,7 @@ namespace OpenHwp.Automation.Cli
 
             _section = XDocument.Parse(Encoding.UTF8.GetString(sectionBytes), LoadOptions.PreserveWhitespace);
             _nextGeneratedObjectId = Math.Max(1, MaxNumericId(_section) + 1);
+            _report.TemplateCompatibility = AnalyzeTemplateCompatibility();
             _report.MarkdownTables = _tables.Count;
             _report.MarkdownImages = _imageReferences.Count;
             foreach (var image in _imageReferences)
@@ -894,6 +898,55 @@ namespace OpenHwp.Automation.Cli
             return operation;
         }
 
+        private TemplateCompatibilityReport AnalyzeTemplateCompatibility()
+        {
+            var tables = _section.Descendants(Hp + "tbl").ToList();
+            var compatibility = new TemplateCompatibilityReport
+            {
+                Status = tables.Count >= ExpectedProfileTableCount
+                    ? "compatible"
+                    : (tables.Count >= PartialCompatibilityMinimumTableCount ? "partially-compatible" : "incompatible"),
+                TemplateTableCount = tables.Count,
+                ExpectedMinimumTableCount = ExpectedProfileTableCount,
+                HighestProfileTableIndex = HighestProfileTableIndex
+            };
+
+            if (tables.Count >= ExpectedProfileTableCount)
+            {
+                compatibility.Findings.Add("template table count is within the profile-supported range.");
+            }
+            else
+            {
+                compatibility.Findings.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "profile references tables through index {0}, but this template has {1} table(s).",
+                    HighestProfileTableIndex,
+                    tables.Count));
+            }
+
+            if (tables.Count < PartialCompatibilityMinimumTableCount)
+            {
+                compatibility.Findings.Add("too few template tables were found for safe automatic filling.");
+            }
+            else if (tables.Count < ExpectedProfileTableCount)
+            {
+                compatibility.Findings.Add("early profile sections may still fill, but later table-index writes need profile or form-map adjustment.");
+            }
+
+            for (var index = 0; index < Math.Min(8, tables.Count); index++)
+            {
+                compatibility.KeyTableSummaries.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "table {0}: rows={1}, cols={2}, first-label={3}",
+                    index,
+                    GetInt(tables[index], "rowCnt", tables[index].Elements(Hp + "tr").Count()),
+                    GetInt(tables[index], "colCnt", MaxColumnCount(tables[index])),
+                    Abbreviate(CellText(tables[index].Descendants(Hp + "tc").FirstOrDefault()), 40)));
+            }
+
+            return compatibility;
+        }
+
         private string ResolveMarkdownRelativePath(string sourcePath)
         {
             var path = (sourcePath ?? string.Empty).Trim().Replace('/', Path.DirectorySeparatorChar);
@@ -1095,6 +1148,33 @@ namespace OpenHwp.Automation.Cli
         private static int MaxColumnCount(XElement table)
         {
             return table.Elements(Hp + "tr").Select(row => row.Elements(Hp + "tc").Count()).DefaultIfEmpty(0).Max();
+        }
+
+        private static string CellText(XElement cell)
+        {
+            if (cell == null)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (var textNode in cell.Descendants(Hp + "t"))
+            {
+                builder.Append(textNode.Value);
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        private static string Abbreviate(string text, int maxLength)
+        {
+            var value = text ?? string.Empty;
+            if (value.Length <= maxLength)
+            {
+                return value;
+            }
+
+            return value.Substring(0, Math.Max(0, maxLength - 3)) + "...";
         }
 
         private static int GetTableWidth(XElement table)
@@ -1464,6 +1544,13 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- template: " + Path.GetFullPath(templatePath));
             report.AppendLine("- markdown: " + Path.GetFullPath(markdownPath));
             report.AppendLine("- output: " + Path.GetFullPath(outputPath));
+            if (fillReport.TemplateCompatibility != null)
+            {
+                report.AppendLine("- template compatibility: " + fillReport.TemplateCompatibility.Status);
+                report.AppendLine("- template tables observed: " + fillReport.TemplateCompatibility.TemplateTableCount.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine("- profile expected minimum tables: " + fillReport.TemplateCompatibility.ExpectedMinimumTableCount.ToString(CultureInfo.InvariantCulture));
+            }
+
             report.AppendLine("- markdown tables: " + fillReport.MarkdownTables.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown tables rendered as HWP tables: " + fillReport.RenderedMarkdownTables.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown table rows rendered: " + fillReport.RenderedMarkdownTableRows.ToString(CultureInfo.InvariantCulture));
@@ -1480,6 +1567,31 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- missing targets: " + fillReport.MissingTargets.Count.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- skipped unsafe: " + fillReport.SkippedUnsafe.Count.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- skipped unsupported: " + fillReport.SkippedUnsupported.Count.ToString(CultureInfo.InvariantCulture));
+
+            if (fillReport.TemplateCompatibility != null)
+            {
+                report.AppendLine();
+                report.AppendLine("## Template Compatibility");
+                report.AppendLine();
+                report.AppendLine("- status: " + fillReport.TemplateCompatibility.Status);
+                report.AppendLine("- observed table count: " + fillReport.TemplateCompatibility.TemplateTableCount.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine("- expected minimum table count: " + fillReport.TemplateCompatibility.ExpectedMinimumTableCount.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine("- highest table index used by profile: " + fillReport.TemplateCompatibility.HighestProfileTableIndex.ToString(CultureInfo.InvariantCulture));
+                foreach (var finding in fillReport.TemplateCompatibility.Findings)
+                {
+                    report.AppendLine("- " + finding);
+                }
+
+                if (fillReport.TemplateCompatibility.KeyTableSummaries.Count > 0)
+                {
+                    report.AppendLine();
+                    report.AppendLine("### Observed Key Tables");
+                    foreach (var table in fillReport.TemplateCompatibility.KeyTableSummaries)
+                    {
+                        report.AppendLine("- " + table);
+                    }
+                }
+            }
 
             if (fillReport.ImageWrites.Count > 0)
             {
@@ -1518,6 +1630,20 @@ namespace OpenHwp.Automation.Cli
             {
                 report.AppendLine();
                 report.AppendLine("## Missing Targets");
+                var groups = SummarizeMissingTargets(fillReport.MissingTargets, fillReport.TemplateCompatibility);
+                if (groups.Count > 0)
+                {
+                    report.AppendLine();
+                    report.AppendLine("### Missing Target Groups");
+                    foreach (var group in groups)
+                    {
+                        report.AppendLine("- " + group);
+                    }
+
+                    report.AppendLine();
+                    report.AppendLine("### Raw Missing Targets");
+                }
+
                 foreach (var item in fillReport.MissingTargets)
                 {
                     report.AppendLine("- " + item);
@@ -1600,6 +1726,60 @@ namespace OpenHwp.Automation.Cli
                 .Replace("|", "\\|")
                 .Replace("\r", " ")
                 .Replace("\n", " ");
+        }
+
+        private static IList<string> SummarizeMissingTargets(IList<string> missingTargets, TemplateCompatibilityReport compatibility)
+        {
+            var groups = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var item in missingTargets)
+            {
+                var group = ClassifyMissingTarget(item, compatibility);
+                groups[group] = groups.ContainsKey(group) ? groups[group] + 1 : 1;
+            }
+
+            return groups
+                .OrderByDescending(item => item.Value)
+                .ThenBy(item => item.Key, StringComparer.Ordinal)
+                .Select(item => item.Key + ": " + item.Value.ToString(CultureInfo.InvariantCulture))
+                .ToList();
+        }
+
+        private static string ClassifyMissingTarget(string item, TemplateCompatibilityReport compatibility)
+        {
+            var target = item ?? string.Empty;
+            var tableMatch = Regex.Match(target, @"(?:cell|template row) table=(\d+)|^table\s+(\d+)", RegexOptions.CultureInvariant);
+            if (tableMatch.Success)
+            {
+                var tableText = tableMatch.Groups[1].Success ? tableMatch.Groups[1].Value : tableMatch.Groups[2].Value;
+                int tableIndex;
+                if (int.TryParse(tableText, NumberStyles.Integer, CultureInfo.InvariantCulture, out tableIndex))
+                {
+                    if (compatibility != null && tableIndex >= compatibility.TemplateTableCount)
+                    {
+                        return string.Format(
+                            CultureInfo.InvariantCulture,
+                            "profile table index is absent in this template (table {0}, observed tables {1})",
+                            tableIndex,
+                            compatibility.TemplateTableCount);
+                    }
+
+                    return "table exists but expected row/column/shape was not found";
+                }
+            }
+
+            if (target.StartsWith("heading ", StringComparison.Ordinal) ||
+                target.StartsWith("bullet after ", StringComparison.Ordinal) ||
+                target.StartsWith("paragraph text ", StringComparison.Ordinal))
+            {
+                return "heading or anchor text was not found";
+            }
+
+            if (target.StartsWith("paragraph ", StringComparison.Ordinal))
+            {
+                return "profile paragraph index is absent or shifted";
+            }
+
+            return "other profile target was not found";
         }
 
         private static byte[] SerializeXmlDocument(XDocument document)
@@ -1686,6 +1866,8 @@ namespace OpenHwp.Automation.Cli
 
             public int RebuiltRows { get; set; }
 
+            public TemplateCompatibilityReport TemplateCompatibility { get; set; }
+
             public IList<string> MissingTargets { get; private set; }
 
             public IList<string> SkippedUnsafe { get; private set; }
@@ -1703,6 +1885,27 @@ namespace OpenHwp.Automation.Cli
                 SkippedUnsupported = new List<string>();
                 MarkdownImageReferences = new List<MarkdownImageReference>();
                 ImageWrites = new List<ImageWriteOperation>();
+            }
+        }
+
+        internal sealed class TemplateCompatibilityReport
+        {
+            public string Status { get; set; }
+
+            public int TemplateTableCount { get; set; }
+
+            public int ExpectedMinimumTableCount { get; set; }
+
+            public int HighestProfileTableIndex { get; set; }
+
+            public IList<string> Findings { get; private set; }
+
+            public IList<string> KeyTableSummaries { get; private set; }
+
+            public TemplateCompatibilityReport()
+            {
+                Findings = new List<string>();
+                KeyTableSummaries = new List<string>();
             }
         }
 
