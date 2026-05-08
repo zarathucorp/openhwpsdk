@@ -1267,8 +1267,11 @@ namespace OpenHwp.Automation.Cli
                 if (cellOrder >= 0 && cellOrder < cells.Count)
                 {
                     targetCell = cells[cellOrder];
-                    reason = string.Empty;
-                    return true;
+                    if (MapCellCurrentTextMatches(mapCell, targetCell))
+                    {
+                        reason = string.Empty;
+                        return true;
+                    }
                 }
             }
 
@@ -1284,12 +1287,47 @@ namespace OpenHwp.Automation.Cli
 
             if (targetCell != null)
             {
-                reason = string.Empty;
-                return true;
+                if (MapCellCurrentTextMatches(mapCell, targetCell))
+                {
+                    reason = string.Empty;
+                    return true;
+                }
+
+                reason = "cell currentText mismatch: " + DescribeCellTextMismatch(mapCell, targetCell);
+                targetCell = null;
+                return false;
             }
 
             reason = "cell was not found in package table";
             return false;
+        }
+
+        private static bool MapCellCurrentTextMatches(XElement mapCell, XElement targetCell)
+        {
+            var writeText = mapCell.Element("writeText");
+            if (writeText != null && !GetBool(writeText, "validateCurrentText", true))
+            {
+                return true;
+            }
+
+            var expected = NormalizeText(mapCell.Element("currentText") == null ? string.Empty : mapCell.Element("currentText").Value);
+            if (string.IsNullOrWhiteSpace(expected))
+            {
+                return true;
+            }
+
+            return string.Equals(NormalizeText(TextOf(targetCell)), expected, StringComparison.Ordinal);
+        }
+
+        private static string DescribeCellTextMismatch(XElement mapCell, XElement targetCell)
+        {
+            var expected = NormalizeText(mapCell.Element("currentText") == null ? string.Empty : mapCell.Element("currentText").Value);
+            var actual = NormalizeText(TextOf(targetCell));
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "expected='{0}', actual='{1}'",
+                Abbreviate(expected, 40),
+                Abbreviate(actual, 40));
         }
 
         private static bool TryResolvePackageAnchorParagraph(XDocument document, XElement mapAnchor, out XElement paragraph, out string reason)
