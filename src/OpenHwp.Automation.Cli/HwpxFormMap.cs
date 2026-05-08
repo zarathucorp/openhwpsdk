@@ -186,7 +186,7 @@ namespace OpenHwp.Automation.Cli
                 ApplyPackageCellWrites(xmlDocuments, touchedParts, cell, result, maxOperations);
             }
 
-            foreach (var anchor in mapDocument.Descendants("anchor"))
+            foreach (var anchor in OrderPackageAnchorsForSafeWrites(mapDocument.Descendants("anchor")))
             {
                 if (LimitReached(result, maxOperations))
                 {
@@ -208,6 +208,15 @@ namespace OpenHwp.Automation.Cli
 
             SimpleZipArchive.WriteAllPreservingTemplate(inputHwpxPath, outputHwpxPath, entries);
             return result;
+        }
+
+        private static IEnumerable<XElement> OrderPackageAnchorsForSafeWrites(IEnumerable<XElement> anchors)
+        {
+            return anchors
+                .OrderBy(anchor => ResolveMapPartPath(anchor), StringComparer.OrdinalIgnoreCase)
+                .ThenByDescending(anchor => GetInt(anchor, "paragraphIndex", -1))
+                .ThenByDescending(anchor => GetInt(anchor, "occurrence", -1))
+                .ThenByDescending(anchor => GetInt(anchor, "anchorIndex", -1));
         }
 
         public static ProbeResult Probe(HwpSession hwp, string mapPath, string reportPath, int maxOperations)
@@ -1302,8 +1311,21 @@ namespace OpenHwp.Automation.Cli
                 return true;
             }
 
-            reason = "anchor paragraph was not found";
+            var matchingParagraphs = CountMatchingParagraphs(paragraphs, currentText);
+            reason = matchingParagraphs > 0
+                ? string.Format(CultureInfo.InvariantCulture, "anchor paragraph was not found at occurrence {0}; matching paragraphs={1}", occurrence, matchingParagraphs)
+                : "anchor paragraph was not found; matching paragraphs=0";
             return false;
+        }
+
+        private static int CountMatchingParagraphs(IEnumerable<XElement> paragraphs, string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return 0;
+            }
+
+            return paragraphs.Count(paragraph => string.Equals(NormalizeText(TextOf(paragraph)), text, StringComparison.Ordinal));
         }
 
         private static XElement FindParagraphByTextOccurrence(IList<XElement> paragraphs, string text, int occurrence)
