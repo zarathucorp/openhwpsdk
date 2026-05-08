@@ -25,9 +25,11 @@ namespace OpenHwp.Automation.Cli
         private const int ExpectedProfileTableCount = 48;
         private const int HighestProfileTableIndex = 47;
         private const int PartialCompatibilityMinimumTableCount = 21;
+        private static readonly string[] ProfileAssetRootNames = { "images" };
 
         private readonly string _markdown;
         private readonly string _markdownPath;
+        private readonly IList<string> _assetRoots;
         private readonly IList<IList<IList<string>>> _tables;
         private readonly IList<MarkdownImageReference> _imageReferences;
         private readonly string _templatePath;
@@ -37,10 +39,11 @@ namespace OpenHwp.Automation.Cli
         private int _nextImageAnchorIndex;
         private long _nextGeneratedObjectId;
 
-        private SubmissionTemplateFiller(string templatePath, string markdownPath)
+        private SubmissionTemplateFiller(string templatePath, string markdownPath, IEnumerable<string> assetRoots)
         {
             _templatePath = Path.GetFullPath(templatePath);
             _markdownPath = Path.GetFullPath(markdownPath);
+            _assetRoots = NormalizeAssetRoots(assetRoots);
             _markdown = ReadTextFile(markdownPath);
             _tables = MarkdownTableParser.ParseTables(_markdown);
             _imageReferences = ParseMarkdownImages(_markdown);
@@ -55,6 +58,11 @@ namespace OpenHwp.Automation.Cli
             _section = XDocument.Parse(Encoding.UTF8.GetString(sectionBytes), LoadOptions.PreserveWhitespace);
             _nextGeneratedObjectId = Math.Max(1, MaxNumericId(_section) + 1);
             _report.TemplateCompatibility = AnalyzeTemplateCompatibility();
+            foreach (var assetRoot in _assetRoots)
+            {
+                _report.AssetRoots.Add(assetRoot);
+            }
+
             _report.MarkdownTables = _tables.Count;
             _report.MarkdownImages = _imageReferences.Count;
             foreach (var image in _imageReferences)
@@ -65,7 +73,12 @@ namespace OpenHwp.Automation.Cli
 
         public static FillReport Fill(string templatePath, string markdownPath, string outputPath)
         {
-            var filler = new SubmissionTemplateFiller(templatePath, markdownPath);
+            return Fill(templatePath, markdownPath, outputPath, null);
+        }
+
+        public static FillReport Fill(string templatePath, string markdownPath, string outputPath, IEnumerable<string> assetRoots)
+        {
+            var filler = new SubmissionTemplateFiller(templatePath, markdownPath, assetRoots);
             filler.FillKnownProfile();
             filler.Save(outputPath);
             return filler._report;
@@ -833,7 +846,7 @@ namespace OpenHwp.Automation.Cli
                 string imagePath;
                 if (TryParseMarkdownImageLine(line, out imageAlt, out imagePath))
                 {
-                    items.Add(BlockItem.ForImage(CreateImageWriteOperation(imageAlt, imagePath)));
+                    items.Add(BlockItem.ForImage(CreateImageWriteOperation(imageAlt, imagePath, index + 1)));
                     continue;
                 }
 
@@ -879,20 +892,29 @@ namespace OpenHwp.Automation.Cli
             return items;
         }
 
-        private ImageWriteOperation CreateImageWriteOperation(string altText, string sourcePath)
+        private ImageWriteOperation CreateImageWriteOperation(string altText, string sourcePath, int lineNumber)
         {
+            var resolution = ResolveMarkdownImagePath(sourcePath);
             _nextImageAnchorIndex++;
             var operation = new ImageWriteOperation
             {
+                LineNumber = lineNumber,
                 AltText = NormalizeInline(altText),
                 SourcePath = (sourcePath ?? string.Empty).Trim(),
-                ResolvedPath = ResolveMarkdownRelativePath(sourcePath),
+                ResolvedPath = resolution.ResolvedPath,
                 AnchorText = "[[openhwpsdk-image-" + _nextImageAnchorIndex.ToString("0000", CultureInfo.InvariantCulture) + "]]",
                 Width = DefaultMarkdownImageWidth,
                 Height = DefaultMarkdownImageHeight,
                 Status = "pending",
-                Note = "queued for HWP COM InsertPicture"
+                Note = string.IsNullOrWhiteSpace(resolution.ResolvedPath)
+                    ? "queued for HWP COM InsertPicture, but image file was not found"
+                    : "queued for HWP COM InsertPicture"
             };
+
+            foreach (var candidate in resolution.CandidatePaths)
+            {
+                operation.CandidatePaths.Add(candidate);
+            }
 
             _report.ImageWrites.Add(operation);
             return operation;
@@ -947,17 +969,124 @@ namespace OpenHwp.Automation.Cli
             return compatibility;
         }
 
-        private string ResolveMarkdownRelativePath(string sourcePath)
+        private ImagePathResolution ResolveMarkdownImagePath(string sourcePath)
         {
-            var path = (sourcePath ?? string.Empty).Trim().Replace('/', Path.DirectorySeparatorChar);
+            var path = NormalizeMarkdownImagePath(sourcePath);
+            var resolution = new ImagePathResolution();
             if (string.IsNullOrWhiteSpace(path))
             {
-                return string.Empty;
+                return resolution;
             }
 
-            return Path.IsPathRooted(path)
-                ? Path.GetFullPath(path)
-                : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_markdownPath) ?? Directory.GetCurrentDirectory(), path));
+            if (IsWebImagePath(path))
+            {
+                resolution.CandidatePaths.Add(path);
+                return resolution;
+            }
+
+            if (Path.IsPathRooted(path))
+            {
+                AddCandidatePath(resolution.CandidatePaths, path);
+                resolution.ResolvedPath = resolution.CandidatePaths.FirstOrDefault(File.Exists) ?? resolution.CandidatePaths.FirstOrDefault() ?? string.Empty;
+                return resolution;
+            }
+
+            var markdownDirectory = Path.GetDirectoryName(_markdownPath) ?? Directory.GetCurrentDirectory();
+            AddCandidatePath(resolution.CandidatePaths, Path.Combine(markdownDirectory, path));
+            AddCandidatePath(resolution.CandidatePaths, Path.Combine(Directory.GetCurrentDirectory(), path));
+
+            foreach (var assetRoot in _assetRoots)
+            {
+                AddCandidatePath(resolution.CandidatePaths, Path.Combine(assetRoot, path));
+                AddFileNameCandidate(resolution.CandidatePaths, assetRoot, path);
+            }
+
+            foreach (var profileRoot in ProfileAssetRootNames.Select(root => Path.Combine(Directory.GetCurrentDirectory(), root)))
+            {
+                AddCandidatePath(resolution.CandidatePaths, Path.Combine(profileRoot, path));
+                AddFileNameCandidate(resolution.CandidatePaths, profileRoot, path);
+            }
+
+            resolution.ResolvedPath = resolution.CandidatePaths.FirstOrDefault(File.Exists) ?? string.Empty;
+            return resolution;
+        }
+
+        private static IList<string> NormalizeAssetRoots(IEnumerable<string> assetRoots)
+        {
+            var roots = new List<string>();
+            if (assetRoots == null)
+            {
+                return roots;
+            }
+
+            foreach (var root in assetRoots)
+            {
+                if (string.IsNullOrWhiteSpace(root))
+                {
+                    continue;
+                }
+
+                AddCandidatePath(roots, root);
+            }
+
+            return roots;
+        }
+
+        private static string NormalizeMarkdownImagePath(string sourcePath)
+        {
+            var value = (sourcePath ?? string.Empty).Trim().Trim('<', '>');
+            var titleIndex = value.IndexOf(" \"", StringComparison.Ordinal);
+            if (titleIndex > 0)
+            {
+                value = value.Substring(0, titleIndex).Trim();
+            }
+
+            value = HttpUtility.UrlDecode(value);
+            return (value ?? string.Empty).Replace('/', Path.DirectorySeparatorChar);
+        }
+
+        private static bool IsWebImagePath(string path)
+        {
+            return path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                   path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void AddCandidatePath(IList<string> candidates, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(path);
+            }
+            catch (ArgumentException)
+            {
+                fullPath = path;
+            }
+            catch (NotSupportedException)
+            {
+                fullPath = path;
+            }
+
+            if (!candidates.Any(candidate => string.Equals(candidate, fullPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                candidates.Add(fullPath);
+            }
+        }
+
+        private static void AddFileNameCandidate(IList<string> candidates, string root, string path)
+        {
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName) || string.Equals(fileName, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            AddCandidatePath(candidates, Path.Combine(root, fileName));
         }
 
         private static bool TryParseMarkdownImageLine(string line, out string altText, out string sourcePath)
@@ -1551,6 +1680,11 @@ namespace OpenHwp.Automation.Cli
                 report.AppendLine("- profile expected minimum tables: " + fillReport.TemplateCompatibility.ExpectedMinimumTableCount.ToString(CultureInfo.InvariantCulture));
             }
 
+            if (fillReport.AssetRoots.Count > 0)
+            {
+                report.AppendLine("- asset roots: " + string.Join("; ", fillReport.AssetRoots.ToArray()));
+            }
+
             report.AppendLine("- markdown tables: " + fillReport.MarkdownTables.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown tables rendered as HWP tables: " + fillReport.RenderedMarkdownTables.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown table rows rendered: " + fillReport.RenderedMarkdownTableRows.ToString(CultureInfo.InvariantCulture));
@@ -1598,19 +1732,50 @@ namespace OpenHwp.Automation.Cli
                 report.AppendLine();
                 report.AppendLine("## Image Writes");
                 report.AppendLine();
-                report.AppendLine("| anchor | status | path | note |");
-                report.AppendLine("| --- | --- | --- | --- |");
+                report.AppendLine("| line | anchor | status | source path | resolved path | note |");
+                report.AppendLine("| --- | --- | --- | --- | --- | --- |");
                 foreach (var item in fillReport.ImageWrites)
                 {
                     report.Append("| ");
+                    report.Append(item.LineNumber.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
                     report.Append(EscapeMarkdownTable(item.AnchorText));
                     report.Append(" | ");
                     report.Append(EscapeMarkdownTable(item.Status));
                     report.Append(" | ");
                     report.Append(EscapeMarkdownTable(item.SourcePath));
                     report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(item.ResolvedPath));
+                    report.Append(" | ");
                     report.Append(EscapeMarkdownTable(item.Note));
                     report.AppendLine(" |");
+                }
+            }
+
+            var missingImageFiles = fillReport.ImageWrites
+                .Where(item => string.IsNullOrWhiteSpace(item.ResolvedPath) || !File.Exists(item.ResolvedPath))
+                .ToList();
+            if (missingImageFiles.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Missing Image Files");
+                report.AppendLine();
+                report.AppendLine("Use `--asset-root <dir>` or update the Markdown image path when the intended image is listed outside these candidates.");
+                foreach (var item in missingImageFiles)
+                {
+                    report.AppendLine("- line " + item.LineNumber.ToString(CultureInfo.InvariantCulture) + ": " + item.SourcePath);
+                    if (item.CandidatePaths.Count > 0)
+                    {
+                        report.AppendLine("  - searched candidates:");
+                        foreach (var candidate in item.CandidatePaths)
+                        {
+                            report.AppendLine("    - " + candidate);
+                        }
+                    }
+                    else
+                    {
+                        report.AppendLine("  - searched candidates: none");
+                    }
                 }
             }
 
@@ -1868,6 +2033,8 @@ namespace OpenHwp.Automation.Cli
 
             public TemplateCompatibilityReport TemplateCompatibility { get; set; }
 
+            public IList<string> AssetRoots { get; private set; }
+
             public IList<string> MissingTargets { get; private set; }
 
             public IList<string> SkippedUnsafe { get; private set; }
@@ -1880,6 +2047,7 @@ namespace OpenHwp.Automation.Cli
 
             public FillReport()
             {
+                AssetRoots = new List<string>();
                 MissingTargets = new List<string>();
                 SkippedUnsafe = new List<string>();
                 SkippedUnsupported = new List<string>();
@@ -1920,11 +2088,15 @@ namespace OpenHwp.Automation.Cli
 
         internal sealed class ImageWriteOperation
         {
+            public int LineNumber { get; set; }
+
             public string AltText { get; set; }
 
             public string SourcePath { get; set; }
 
             public string ResolvedPath { get; set; }
+
+            public IList<string> CandidatePaths { get; private set; }
 
             public string AnchorText { get; set; }
 
@@ -1935,6 +2107,24 @@ namespace OpenHwp.Automation.Cli
             public string Status { get; set; }
 
             public string Note { get; set; }
+
+            public ImageWriteOperation()
+            {
+                CandidatePaths = new List<string>();
+            }
+        }
+
+        private sealed class ImagePathResolution
+        {
+            public string ResolvedPath { get; set; }
+
+            public IList<string> CandidatePaths { get; private set; }
+
+            public ImagePathResolution()
+            {
+                ResolvedPath = string.Empty;
+                CandidatePaths = new List<string>();
+            }
         }
 
         private enum BlockItemKind

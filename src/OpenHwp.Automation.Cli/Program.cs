@@ -849,6 +849,7 @@ namespace OpenHwp.Automation.Cli
         {
             string profile = "r-and-d-startup-2026";
             string reportPath = null;
+            var assetRoots = new List<string>();
             var values = new List<string>();
 
             for (var index = 1; index < args.Length; index++)
@@ -879,12 +880,25 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
+                if (string.Equals(args[index], "--asset-root", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --asset-root.");
+                        return 1;
+                    }
+
+                    index++;
+                    assetRoots.Add(args[index]);
+                    continue;
+                }
+
                 values.Add(args[index]);
             }
 
             if (values.Count != 3)
             {
-                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory]");
                 return 1;
             }
 
@@ -894,7 +908,7 @@ namespace OpenHwp.Automation.Cli
                 return 1;
             }
 
-            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2]);
+            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], assetRoots);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
             var imageWritesPassed = ApplySubmissionTemplateImages(result, values[2], visible, keepOpen);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
@@ -912,6 +926,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("markdown_images=" + result.MarkdownImages);
             Console.WriteLine("image_writes=" + result.ImageWrites.Count);
             Console.WriteLine("image_writes_applied=" + result.ImageWrites.Count(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)));
+            Console.WriteLine("image_writes_missing_files=" + result.ImageWrites.Count(item => string.IsNullOrWhiteSpace(item.ResolvedPath) || !File.Exists(item.ResolvedPath)));
             Console.WriteLine("cell_writes=" + result.CellWrites);
             Console.WriteLine("paragraph_writes=" + result.ParagraphWrites);
             Console.WriteLine("inserted_paragraphs=" + result.InsertedParagraphs);
@@ -951,7 +966,7 @@ namespace OpenHwp.Automation.Cli
                         if (string.IsNullOrWhiteSpace(image.ResolvedPath) || !File.Exists(image.ResolvedPath))
                         {
                             image.Status = "failed";
-                            image.Note = "image file was not found: " + image.ResolvedPath;
+                            image.Note = "image file was not found; searched " + image.CandidatePaths.Count + " candidate path(s)";
                             continue;
                         }
 
@@ -1662,7 +1677,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
-            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath]");
+            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
