@@ -798,6 +798,7 @@ namespace OpenHwp.Automation
 
                     TryRunCommand("TableCellBlock");
                     ExecuteAction("TableDeleteCell");
+                    SetCharShapeHeight(1000, false);
                     InsertText(text);
                     return true;
                 });

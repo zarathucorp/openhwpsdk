@@ -175,6 +175,7 @@ namespace OpenHwp.Automation.Cli
             var mapDocument = XDocument.Load(mapPath, LoadOptions.PreserveWhitespace);
             var touchedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new ApplyResult();
+            var textStyleGuard = TextStyleGuard.Create(xmlDocuments);
 
             foreach (var cell in mapDocument.Descendants("cell"))
             {
@@ -183,7 +184,7 @@ namespace OpenHwp.Automation.Cli
                     break;
                 }
 
-                ApplyPackageCellWrites(xmlDocuments, touchedParts, cell, result, maxOperations);
+                ApplyPackageCellWrites(xmlDocuments, touchedParts, cell, textStyleGuard, result, maxOperations);
             }
 
             foreach (var anchor in OrderPackageAnchorsForSafeWrites(mapDocument.Descendants("anchor")))
@@ -193,7 +194,7 @@ namespace OpenHwp.Automation.Cli
                     break;
                 }
 
-                ApplyPackageAnchorWrites(xmlDocuments, touchedParts, anchor, result, maxOperations);
+                ApplyPackageAnchorWrites(xmlDocuments, touchedParts, anchor, textStyleGuard, result, maxOperations);
             }
 
             foreach (var partPath in touchedParts)
@@ -1005,7 +1006,7 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static void ApplyPackageCellWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement cell, ApplyResult result, int maxOperations)
+        private static void ApplyPackageCellWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement cell, TextStyleGuard textStyleGuard, ApplyResult result, int maxOperations)
         {
             var id = GetString(cell, "id");
             var target = string.Format(
@@ -1045,11 +1046,12 @@ namespace OpenHwp.Automation.Cli
                     }
 
                     string reason;
-                    if (TryApplyPackageCellText(xmlDocuments, touchedParts, cell, text, out reason))
+                    int repairedRuns;
+                    if (TryApplyPackageCellText(xmlDocuments, touchedParts, cell, text, textStyleGuard, out reason, out repairedRuns))
                     {
                         result.Applied++;
                         Console.WriteLine("package set cell: id={0}, text={1}", GetString(cell, "id"), Abbreviate(text, 80));
-                        RecordApplyOperation(result, "cell", id, target, "APPLIED", "package text");
+                        RecordApplyOperation(result, "cell", id, target, "APPLIED", repairedRuns > 0 ? "package text; normalized small charPr runs=" + repairedRuns.ToString(CultureInfo.InvariantCulture) : "package text");
                     }
                     else
                     {
@@ -1074,7 +1076,7 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static void ApplyPackageAnchorWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement anchor, ApplyResult result, int maxOperations)
+        private static void ApplyPackageAnchorWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement anchor, TextStyleGuard textStyleGuard, ApplyResult result, int maxOperations)
         {
             var id = GetString(anchor, "id");
             var currentText = (anchor.Element("currentText") == null ? string.Empty : anchor.Element("currentText").Value).Trim();
@@ -1114,11 +1116,12 @@ namespace OpenHwp.Automation.Cli
                     }
 
                     string reason;
-                    if (TryApplyPackageAnchorText(xmlDocuments, touchedParts, anchor, text, out reason))
+                    int repairedRuns;
+                    if (TryApplyPackageAnchorText(xmlDocuments, touchedParts, anchor, text, textStyleGuard, out reason, out repairedRuns))
                     {
                         result.Applied++;
                         Console.WriteLine("package set anchor: id={0}, text={1}", GetString(anchor, "id"), Abbreviate(text, 80));
-                        RecordApplyOperation(result, "anchor", id, target, "APPLIED", "package text");
+                        RecordApplyOperation(result, "anchor", id, target, "APPLIED", repairedRuns > 0 ? "package text; normalized small charPr runs=" + repairedRuns.ToString(CultureInfo.InvariantCulture) : "package text");
                     }
                     else
                     {
@@ -1143,8 +1146,9 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, out string reason)
+        private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
+            repairedRuns = 0;
             var partPath = ResolveMapPartPath(mapCell);
             if (string.IsNullOrWhiteSpace(partPath))
             {
@@ -1171,7 +1175,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
-            if (!TrySetCellTextPreservingNestedContent(targetCell, text, out reason))
+            if (!TrySetCellTextPreservingNestedContent(targetCell, text, textStyleGuard, out reason, out repairedRuns))
             {
                 return false;
             }
@@ -1181,8 +1185,9 @@ namespace OpenHwp.Automation.Cli
             return true;
         }
 
-        private static bool TryApplyPackageAnchorText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapAnchor, string text, out string reason)
+        private static bool TryApplyPackageAnchorText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapAnchor, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
+            repairedRuns = 0;
             var partPath = ResolveMapPartPath(mapAnchor);
             if (string.IsNullOrWhiteSpace(partPath))
             {
@@ -1205,7 +1210,7 @@ namespace OpenHwp.Automation.Cli
 
             var replaceAnchorText = GetBool(mapAnchor.Element("writeText"), "replaceAnchorText", true);
             var finalText = replaceAnchorText ? text : TextOf(paragraph) + text;
-            if (!TrySetParagraphText(paragraph, finalText, out reason))
+            if (!TrySetParagraphText(paragraph, finalText, textStyleGuard, out reason, out repairedRuns))
             {
                 return false;
             }
@@ -1354,8 +1359,9 @@ namespace OpenHwp.Automation.Cli
             return null;
         }
 
-        private static bool TrySetCellTextPreservingNestedContent(XElement cell, string text, out string reason)
+        private static bool TrySetCellTextPreservingNestedContent(XElement cell, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
+            repairedRuns = 0;
             var paragraph = GetWritableCellParagraph(cell);
             if (paragraph == null)
             {
@@ -1363,7 +1369,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
-            return TrySetParagraphText(paragraph, text, out reason);
+            return TrySetParagraphText(paragraph, text, textStyleGuard, out reason, out repairedRuns);
         }
 
         private static XElement GetWritableCellParagraph(XElement cell)
@@ -1377,8 +1383,9 @@ namespace OpenHwp.Automation.Cli
             return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
         }
 
-        private static bool TrySetParagraphText(XElement paragraph, string text, out string reason)
+        private static bool TrySetParagraphText(XElement paragraph, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
+            repairedRuns = 0;
             if (paragraph == null)
             {
                 reason = "paragraph is missing";
@@ -1420,6 +1427,7 @@ namespace OpenHwp.Automation.Cli
             }
 
             paragraph.Elements(Hp + "linesegarray").Remove();
+            repairedRuns = textStyleGuard == null ? 0 : textStyleGuard.EnsureMinimumCharHeight(paragraph);
             reason = string.Empty;
             return true;
         }
@@ -1767,6 +1775,129 @@ namespace OpenHwp.Automation.Cli
             }
 
             return value.Substring(0, maxLength - 3) + "...";
+        }
+
+        private sealed class TextStyleGuard
+        {
+            private const int MinimumSafeHeight = 700;
+            private const int PreferredMinimumHeight = 850;
+            private const int PreferredMaximumHeight = 1100;
+            private readonly IDictionary<string, int> _charHeights;
+            private readonly string _fallbackCharPrId;
+
+            private TextStyleGuard(IDictionary<string, int> charHeights, string fallbackCharPrId)
+            {
+                _charHeights = charHeights;
+                _fallbackCharPrId = fallbackCharPrId;
+            }
+
+            public static TextStyleGuard Create(IDictionary<string, XDocument> xmlDocuments)
+            {
+                var charHeights = ReadCharHeights(xmlDocuments);
+                if (charHeights.Count == 0)
+                {
+                    return new TextStyleGuard(charHeights, string.Empty);
+                }
+
+                var usage = CountRunCharPrUsage(xmlDocuments);
+                var fallback = usage
+                    .Where(item => IsPreferredHeight(charHeights, item.Key))
+                    .OrderByDescending(item => item.Value)
+                    .ThenBy(item => item.Key, StringComparer.Ordinal)
+                    .Select(item => item.Key)
+                    .FirstOrDefault();
+
+                if (string.IsNullOrWhiteSpace(fallback))
+                {
+                    fallback = charHeights
+                        .Where(item => item.Value >= MinimumSafeHeight)
+                        .OrderBy(item => Math.Abs(item.Value - 1000))
+                        .ThenBy(item => item.Key, StringComparer.Ordinal)
+                        .Select(item => item.Key)
+                        .FirstOrDefault();
+                }
+
+                return new TextStyleGuard(charHeights, fallback ?? string.Empty);
+            }
+
+            public int EnsureMinimumCharHeight(XElement paragraph)
+            {
+                if (paragraph == null || string.IsNullOrWhiteSpace(_fallbackCharPrId))
+                {
+                    return 0;
+                }
+
+                var changed = 0;
+                foreach (var run in paragraph.Descendants(Hp + "run"))
+                {
+                    var charPrId = GetString(run, "charPrIDRef");
+                    if (string.IsNullOrWhiteSpace(charPrId))
+                    {
+                        continue;
+                    }
+
+                    int height;
+                    if (_charHeights.TryGetValue(charPrId, out height) && height > 0 && height < MinimumSafeHeight)
+                    {
+                        run.SetAttributeValue("charPrIDRef", _fallbackCharPrId);
+                        changed++;
+                    }
+                }
+
+                return changed;
+            }
+
+            private static bool IsPreferredHeight(IDictionary<string, int> charHeights, string charPrId)
+            {
+                int height;
+                return charHeights.TryGetValue(charPrId, out height) &&
+                       height >= PreferredMinimumHeight &&
+                       height <= PreferredMaximumHeight;
+            }
+
+            private static IDictionary<string, int> ReadCharHeights(IDictionary<string, XDocument> xmlDocuments)
+            {
+                var result = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (var document in xmlDocuments.Values)
+                {
+                    foreach (var charPr in document.Descendants(Hh + "charPr"))
+                    {
+                        var id = GetString(charPr, "id");
+                        if (string.IsNullOrWhiteSpace(id))
+                        {
+                            continue;
+                        }
+
+                        var height = GetInt(charPr, "height", 0);
+                        if (height > 0 && !result.ContainsKey(id))
+                        {
+                            result.Add(id, height);
+                        }
+                    }
+                }
+
+                return result;
+            }
+
+            private static IDictionary<string, int> CountRunCharPrUsage(IDictionary<string, XDocument> xmlDocuments)
+            {
+                var result = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (var document in xmlDocuments.Values)
+                {
+                    foreach (var run in document.Descendants(Hp + "run"))
+                    {
+                        var id = GetString(run, "charPrIDRef");
+                        if (string.IsNullOrWhiteSpace(id))
+                        {
+                            continue;
+                        }
+
+                        result[id] = result.ContainsKey(id) ? result[id] + 1 : 1;
+                    }
+                }
+
+                return result;
+            }
         }
 
         internal sealed class ApplyResult
