@@ -30,6 +30,7 @@ namespace OpenHwp.Automation.Cli
         private readonly string _markdown;
         private readonly string _markdownPath;
         private readonly IList<string> _assetRoots;
+        private readonly string _markdownTableMode;
         private readonly IList<IList<IList<string>>> _tables;
         private readonly IList<MarkdownImageReference> _imageReferences;
         private readonly string _templatePath;
@@ -39,11 +40,12 @@ namespace OpenHwp.Automation.Cli
         private int _nextImageAnchorIndex;
         private long _nextGeneratedObjectId;
 
-        private SubmissionTemplateFiller(string templatePath, string markdownPath, IEnumerable<string> assetRoots)
+        private SubmissionTemplateFiller(string templatePath, string markdownPath, IEnumerable<string> assetRoots, string markdownTableMode)
         {
             _templatePath = Path.GetFullPath(templatePath);
             _markdownPath = Path.GetFullPath(markdownPath);
             _assetRoots = NormalizeAssetRoots(assetRoots);
+            _markdownTableMode = NormalizeMarkdownTableMode(markdownTableMode);
             _markdown = ReadTextFile(markdownPath);
             _tables = MarkdownTableParser.ParseTables(_markdown);
             _imageReferences = ParseMarkdownImages(_markdown);
@@ -58,6 +60,7 @@ namespace OpenHwp.Automation.Cli
             _section = XDocument.Parse(Encoding.UTF8.GetString(sectionBytes), LoadOptions.PreserveWhitespace);
             _nextGeneratedObjectId = Math.Max(1, MaxNumericId(_section) + 1);
             _report.TemplateCompatibility = AnalyzeTemplateCompatibility();
+            _report.MarkdownTableMode = _markdownTableMode;
             foreach (var assetRoot in _assetRoots)
             {
                 _report.AssetRoots.Add(assetRoot);
@@ -73,12 +76,17 @@ namespace OpenHwp.Automation.Cli
 
         public static FillReport Fill(string templatePath, string markdownPath, string outputPath)
         {
-            return Fill(templatePath, markdownPath, outputPath, null);
+            return Fill(templatePath, markdownPath, outputPath, null, null);
         }
 
         public static FillReport Fill(string templatePath, string markdownPath, string outputPath, IEnumerable<string> assetRoots)
         {
-            var filler = new SubmissionTemplateFiller(templatePath, markdownPath, assetRoots);
+            return Fill(templatePath, markdownPath, outputPath, assetRoots, null);
+        }
+
+        public static FillReport Fill(string templatePath, string markdownPath, string outputPath, IEnumerable<string> assetRoots, string markdownTableMode)
+        {
+            var filler = new SubmissionTemplateFiller(templatePath, markdownPath, assetRoots, markdownTableMode);
             filler.FillKnownProfile();
             filler.Save(outputPath);
             return filler._report;
@@ -863,7 +871,19 @@ namespace OpenHwp.Automation.Cli
                     var tableRows = ParseMarkdownTableLines(tableLines);
                     if (tableRows.Count > 0)
                     {
-                        items.Add(BlockItem.ForTable(tableRows));
+                        if (string.Equals(_markdownTableMode, "render", StringComparison.OrdinalIgnoreCase))
+                        {
+                            items.Add(BlockItem.ForTable(tableRows));
+                        }
+                        else
+                        {
+                            foreach (var textLine in ConvertMarkdownTableToTextLines(tableRows))
+                            {
+                                items.Add(BlockItem.ForText(textLine));
+                            }
+
+                            _report.MarkdownTablesConvertedToText++;
+                        }
                     }
 
                     continue;
@@ -1125,6 +1145,51 @@ namespace OpenHwp.Automation.Cli
             }
 
             return rows;
+        }
+
+        private static IEnumerable<string> ConvertMarkdownTableToTextLines(IList<IList<string>> tableRows)
+        {
+            if (tableRows == null || tableRows.Count == 0)
+            {
+                yield break;
+            }
+
+            var headers = tableRows[0].Select(value => value ?? string.Empty).ToList();
+            for (var rowIndex = 1; rowIndex < tableRows.Count; rowIndex++)
+            {
+                var row = tableRows[rowIndex];
+                var parts = new List<string>();
+                for (var columnIndex = 0; columnIndex < row.Count; columnIndex++)
+                {
+                    var value = row[columnIndex] ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    var header = columnIndex < headers.Count ? headers[columnIndex] : string.Empty;
+                    parts.Add(string.IsNullOrWhiteSpace(header) ? value : header + ": " + value);
+                }
+
+                if (parts.Count > 0)
+                {
+                    yield return "- " + string.Join(" / ", parts.ToArray());
+                }
+            }
+
+            if (tableRows.Count == 1)
+            {
+                var headerOnly = string.Join(" / ", headers.Where(item => !string.IsNullOrWhiteSpace(item)).ToArray());
+                if (!string.IsNullOrWhiteSpace(headerOnly))
+                {
+                    yield return "- " + headerOnly;
+                }
+            }
+        }
+
+        private static string NormalizeMarkdownTableMode(string value)
+        {
+            return string.Equals(value, "render", StringComparison.OrdinalIgnoreCase) ? "render" : "text";
         }
 
         private static bool IsMarkdownTableSeparator(string tableLine)
@@ -1680,6 +1745,7 @@ namespace OpenHwp.Automation.Cli
                 report.AppendLine("- profile expected minimum tables: " + fillReport.TemplateCompatibility.ExpectedMinimumTableCount.ToString(CultureInfo.InvariantCulture));
             }
 
+            report.AppendLine("- markdown table mode: " + fillReport.MarkdownTableMode);
             if (fillReport.AssetRoots.Count > 0)
             {
                 report.AppendLine("- asset roots: " + string.Join("; ", fillReport.AssetRoots.ToArray()));
@@ -1687,6 +1753,7 @@ namespace OpenHwp.Automation.Cli
 
             report.AppendLine("- markdown tables: " + fillReport.MarkdownTables.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown tables rendered as HWP tables: " + fillReport.RenderedMarkdownTables.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- markdown tables converted to text: " + fillReport.MarkdownTablesConvertedToText.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown table rows rendered: " + fillReport.RenderedMarkdownTableRows.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown images: " + fillReport.MarkdownImages.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- image anchors queued for HWP COM: " + mappedImageCount.ToString(CultureInfo.InvariantCulture));
@@ -2023,6 +2090,10 @@ namespace OpenHwp.Automation.Cli
 
             public int MarkdownImages { get; set; }
 
+            public int MarkdownTablesConvertedToText { get; set; }
+
+            public string MarkdownTableMode { get; set; }
+
             public int CellWrites { get; set; }
 
             public int ParagraphWrites { get; set; }
@@ -2047,6 +2118,7 @@ namespace OpenHwp.Automation.Cli
 
             public FillReport()
             {
+                MarkdownTableMode = "text";
                 AssetRoots = new List<string>();
                 MissingTargets = new List<string>();
                 SkippedUnsafe = new List<string>();

@@ -849,6 +849,7 @@ namespace OpenHwp.Automation.Cli
         {
             string profile = "r-and-d-startup-2026";
             string reportPath = null;
+            string markdownTableMode = "text";
             var assetRoots = new List<string>();
             var values = new List<string>();
 
@@ -893,12 +894,32 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
+                if (string.Equals(args[index], "--markdown-table-mode", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --markdown-table-mode.");
+                        return 1;
+                    }
+
+                    index++;
+                    markdownTableMode = args[index];
+                    if (!string.Equals(markdownTableMode, "text", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(markdownTableMode, "render", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.Error.WriteLine("--markdown-table-mode must be either text or render.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
                 values.Add(args[index]);
             }
 
             if (values.Count != 3)
             {
-                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory]");
+                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render]");
                 return 1;
             }
 
@@ -908,7 +929,7 @@ namespace OpenHwp.Automation.Cli
                 return 1;
             }
 
-            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], assetRoots);
+            var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], assetRoots, markdownTableMode);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
             var imageWritesPassed = ApplySubmissionTemplateImages(result, values[2], visible, keepOpen);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
@@ -922,7 +943,9 @@ namespace OpenHwp.Automation.Cli
             }
 
             Console.WriteLine("markdown_tables=" + result.MarkdownTables);
+            Console.WriteLine("markdown_table_mode=" + result.MarkdownTableMode);
             Console.WriteLine("markdown_tables_rendered=" + result.RenderedMarkdownTables);
+            Console.WriteLine("markdown_tables_converted_to_text=" + result.MarkdownTablesConvertedToText);
             Console.WriteLine("markdown_images=" + result.MarkdownImages);
             Console.WriteLine("image_writes=" + result.ImageWrites.Count);
             Console.WriteLine("image_writes_applied=" + result.ImageWrites.Count(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)));
@@ -1746,7 +1769,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
-            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory]");
+            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
