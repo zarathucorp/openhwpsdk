@@ -8,7 +8,7 @@ This note supersedes the first-run issue log for filling the submission template
 
 - COM calls now have a default timeout guard through `ComOperationWatchdog`, plus `--com-timeout-ms` and `--no-com-timeout`.
 - `diagnose-com [inputPath]` reports HWP process state, COM registration, HWP version, visibility, file-path checker registration, message box mode, and optional document-open success.
-- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir]` exists for this submission form.
+- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir] [--markdown-table-mode text|render]` exists for this submission form.
 - `extract-form-map` still creates a whole-package map, and `probe-form-map` still verifies HWP-selectability before editor-backed writes.
 - `apply-form-map --package` now supports text-only package writes, writes apply details when `--report` is supplied, and writes package-layout validation to a sibling `*.layout.md` report.
 - `SimpleZipArchive.WriteAllPreservingTemplate` now provides the core package writer that preserves template entry order, compression method, timestamps, and untouched entries.
@@ -19,6 +19,9 @@ This note supersedes the first-run issue log for filling the submission template
 - The fill report now includes template/profile compatibility, observed key table signatures, configured asset roots, resolved image paths, missing image candidate paths, and grouped missing-target causes.
 - `validate-layout` classifies findings as `expected-change`, `review-needed`, or `blocking`, and supports intentional table row-growth allowlists.
 - Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor index drift.
+- Package text writes normalize target runs that would otherwise inherit `charPr` below 7pt, and COM table-cell writes set 10pt before `InsertText`.
+- Body Markdown tables in the submission profile default to text conversion. `--markdown-table-mode render` keeps the older behavior that inserts new HWPX table objects.
+- Package cell writes validate the extracted `currentText` by default before replacing text, with `validateCurrentText="false"` as an explicit escape hatch.
 
 ## Resolved Or Mostly Resolved
 
@@ -44,7 +47,7 @@ Status: resolved for this submission template, not a generic product feature.
 What changed:
 
 - `fill-submission-template` is now a supported CLI command.
-- The command has an explicit `r-and-d-startup-2026` profile and produces a report with template compatibility, cell writes, paragraph writes, rebuilt rows, Markdown table/image counts, rendered HWP table counts, image-anchor counts, resolved image paths, image write results, missing targets, grouped missing-target causes, skipped unsafe targets, and unmapped image references.
+- The command has an explicit `r-and-d-startup-2026` profile and produces a report with template compatibility, cell writes, paragraph writes, rebuilt rows, Markdown table/image counts, table handling mode, rendered/converted table counts, image-anchor counts, resolved image paths, image write results, missing targets, grouped missing-target causes, skipped unsafe targets, and unmapped image references.
 - The implementation fills the existing template package instead of rebuilding the official form from scratch, then uses a HWP COM post-pass for queued image anchors when images are present.
 
 Remaining gap:
@@ -62,7 +65,7 @@ What changed:
 - `SimpleZipArchive` now reads and writes HWPX/ZIP packages.
 - `WriteAllPreservingTemplate` preserves the original package and replaces only changed entries.
 - `apply-form-map --package` applies text writes without HWP COM, writes apply attempted/applied/failed/skipped rows when `--report` is supplied, and writes layout validation to a sibling `*.layout.md` report.
-- `fill-submission-template` writes text and supported Markdown tables through the package-preserving path, then uses HWP COM for queued Markdown images.
+- `fill-submission-template` writes text and supported Markdown table content through the package-preserving path, then uses HWP COM for queued Markdown images.
 
 Remaining gap:
 
@@ -107,12 +110,14 @@ What changed:
 - `SubmissionTemplateFiller.NormalizeBlockLines` still removes unsupported inline Markdown artifacts for plain-text summaries and preview text.
 - Markdown list lines are normalized into the blank-template body style (`circle` style lines and indented dash detail lines).
 - Profile body blocks now preserve Markdown table semantics and render supported Markdown tables as HWPX `tbl/tr/tc` objects cloned from existing template table style.
-- The fill report counts total Markdown tables, rendered HWP tables, and rendered table rows.
+- The profile now defaults body Markdown tables to text conversion to preserve the original HWPX table count. `--markdown-table-mode render` still renders supported Markdown tables as HWPX `tbl/tr/tc` objects cloned from existing template table style.
+- The fill report counts total Markdown tables, rendered HWP tables, text-converted tables, and rendered table rows.
 
 Remaining gap:
 
 - The normalization lives inside the submission profile, not a reusable Markdown semantic parser.
 - Generic package-map text writes still do not create arbitrary Markdown table structures.
+- The text conversion is intentionally conservative; it preserves content and table count but does not provide semantic cell-level mapping into existing official-form tables.
 
 ### 7. `validate-layout` passes structure but not content quality
 
@@ -142,6 +147,7 @@ What changed:
 Remaining gap:
 
 - Generic package-map text writes still update one paragraph's text node; they do not create full HWP-native structures for arbitrary Markdown headings, lists, captions, or tables.
+- Package text writes now prevent sub-7pt `charPr` inheritance on replaced runs and validate target `currentText` before writing cells.
 - A true generic Markdown-to-HWP renderer remains out of scope.
 
 ### 9. HWP image insertion ignores requested size

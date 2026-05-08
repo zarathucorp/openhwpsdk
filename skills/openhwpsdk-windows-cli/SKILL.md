@@ -54,10 +54,12 @@ For an existing official HWPX template, preserve the template and fill it:
 For the supported R&D startup submission template, prefer:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --markdown-table-mode text --report 'test\out\submission_filled_report.md'
 ```
 
-This profile renders supported Markdown tables as real HWPX tables and queues supported Markdown image lines for HWP COM `InsertPicture` through temporary text anchors. The report includes template/profile compatibility, image path resolution candidates, mapped/unmapped image counts, and classified layout findings. If images are present, HWP COM must be healthy; package-mode image insertion remains intentionally unsupported and must be reported as skipped.
+This profile converts body Markdown tables to text by default to preserve the original HWPX table structure; use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable. It queues supported Markdown image lines for HWP COM `InsertPicture` through temporary text anchors. The report includes template/profile compatibility, image path resolution candidates, mapped/unmapped image counts, and classified layout findings. If images are present, HWP COM must be healthy; package-mode image insertion remains intentionally unsupported and must be reported as skipped.
+
+Package text writes guard against tiny placeholder text styles by replacing sub-7pt `charPr` references on written runs. HWP COM table-cell writes set 10pt before `InsertText`. Package cell writes validate extracted `currentText` by default; disable only with `validateCurrentText="false"` on deliberate staged rewrites.
 
 For existing tables, inspect Markdown tables first, then fill existing cells:
 

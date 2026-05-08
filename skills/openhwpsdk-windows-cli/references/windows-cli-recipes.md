@@ -92,15 +92,17 @@ When `--report` is supplied, both COM and package mode write attempted/applied/f
 Use the dedicated profile for the supported startup R&D form:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --markdown-table-mode text --report 'test\out\submission_filled_report.md'
 ```
 
 Current profile behavior:
 
-- Supported Markdown body tables are rendered as real HWPX `tbl/tr/tc` objects cloned from existing template table style.
+- Supported Markdown body tables are converted to text by default to preserve the original HWPX table count. Use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable.
 - Supported Markdown image lines become temporary text anchors and are inserted by HWP COM `InsertPicture`.
-- The report lists template/profile compatibility, total Markdown tables/images, rendered table counts, configured asset roots, resolved image paths, missing image candidate paths, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
+- The report lists template/profile compatibility, total Markdown tables/images, table handling mode, rendered/converted table counts, configured asset roots, resolved image paths, missing image candidate paths, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
 - If HWP COM cannot start, the pre-COM report still shows pending image anchors so missing image support is visible instead of silent.
+- Package text writes guard against tiny placeholder styles by replacing sub-7pt `charPr` references on written runs. HWP COM table-cell writes set 10pt before `InsertText`.
+- Package cell writes validate extracted `currentText` by default. Set `validateCurrentText="false"` on `writeText` only when a staged write deliberately targets already-changed text.
 
 Then validate:
 

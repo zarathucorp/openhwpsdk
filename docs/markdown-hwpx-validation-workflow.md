@@ -74,10 +74,12 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map
 For the current submission form, use the dedicated profile command instead of hand-editing every map entry:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --report "test\out\submission_filled_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --markdown-table-mode text --report "test\out\submission_filled_report.md"
 ```
 
-The submission profile renders supported Markdown tables as HWPX table objects and queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. The report lists template/profile compatibility, configured asset roots, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references. If COM cannot start, the pre-COM report still makes the image work visible.
+The submission profile queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. Body Markdown tables default to text conversion to keep the original HWPX table structure stable. Use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable. The report lists template/profile compatibility, configured asset roots, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references. If COM cannot start, the pre-COM report still makes the image work visible.
+
+Package text writes guard against inheriting tiny placeholder character styles. Runs with `charPr` height below 7pt are moved to a normal-size character style, and HWP COM table-cell insertion sets 10pt before `InsertText`. Package cell writes also validate `currentText` by default; set `validateCurrentText="false"` only for deliberate staged rewrites where the original text is expected to differ.
 
 Layout reports classify findings as `expected-change`, `review-needed`, or `blocking`. For intentional row expansion, allow specific table indexes:
 
