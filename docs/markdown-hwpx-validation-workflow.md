@@ -74,10 +74,18 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map
 For the current submission form, use the dedicated profile command instead of hand-editing every map entry:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --report "test\out\submission_filled_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --report "test\out\submission_filled_report.md"
 ```
 
-The submission profile renders supported Markdown tables as HWPX table objects and queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. If COM cannot start, the report still lists pending image anchors and unmapped image references.
+The submission profile renders supported Markdown tables as HWPX table objects and queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. The report lists template/profile compatibility, configured asset roots, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references. If COM cannot start, the pre-COM report still makes the image work visible.
+
+Layout reports classify findings as `expected-change`, `review-needed`, or `blocking`. For intentional row expansion, allow specific table indexes:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "test\out\submission_filled.hwpx" "test\out\submission_filled_layout.md" --allow-table-row-change 10
+```
+
+Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift when identical bullet text appears many times.
 
 Example cell write:
 

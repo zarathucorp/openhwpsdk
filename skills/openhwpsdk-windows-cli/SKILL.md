@@ -49,15 +49,15 @@ For an existing official HWPX template, preserve the template and fill it:
 2. Edit only generated `writeText` and `writeImage` entries in the map XML.
 3. Run `--visible probe-form-map` before HWP-backed writes.
 4. Run `apply-form-map`; use `apply-form-map --package` only for text-only XML writes. Use `--report` in either mode when attempted/applied/failed/skipped detail matters.
-5. Run `validate-layout`, then `validate-content`, then export PDFs if visual checking is needed.
+5. Run `validate-layout`, then `validate-content`, then export PDFs if visual checking is needed. Use `--allow-table-row-change <indexes>` when a known table expansion is intentional.
 
 For the supported R&D startup submission template, prefer:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --report 'test\out\submission_filled_report.md'
 ```
 
-This profile renders supported Markdown tables as real HWPX tables and queues supported Markdown image lines for HWP COM `InsertPicture` through temporary text anchors. If images are present, HWP COM must be healthy; package-mode image insertion remains intentionally unsupported and must be reported as skipped.
+This profile renders supported Markdown tables as real HWPX tables and queues supported Markdown image lines for HWP COM `InsertPicture` through temporary text anchors. The report includes template/profile compatibility, image path resolution candidates, mapped/unmapped image counts, and classified layout findings. If images are present, HWP COM must be healthy; package-mode image insertion remains intentionally unsupported and must be reported as skipped.
 
 For existing tables, inspect Markdown tables first, then fill existing cells:
 
@@ -84,6 +84,7 @@ After any generated or modified HWPX:
 
 ```powershell
 & $cli validate-layout '<template.hwpx>' '<candidate.hwpx>' 'test\out\layout_report.md'
+& $cli validate-layout '<template.hwpx>' '<candidate.hwpx>' 'test\out\layout_report.md' --allow-table-row-change 10
 & $cli validate-content '<candidate.hwpx>' 'test\out\content_report.md' --require 'required text'
 & $cli --visible export-pdf '<candidate.hwpx>' 'test\out\candidate.pdf'
 ```

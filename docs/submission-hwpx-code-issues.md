@@ -1,6 +1,6 @@
 # Submission HWPX Code Issues
 
-Reviewed on 2026-05-04 against the current `codex/hwp-automation` source tree.
+Reviewed on 2026-05-08 against the current `codex/hwp-automation` source tree.
 
 This note supersedes the first-run issue log for filling the submission template under `test/` from the Markdown draft under `test/`. Several issues below were real when discovered, but are no longer open in the same form after the later CLI and HWPX writer changes.
 
@@ -8,7 +8,7 @@ This note supersedes the first-run issue log for filling the submission template
 
 - COM calls now have a default timeout guard through `ComOperationWatchdog`, plus `--com-timeout-ms` and `--no-com-timeout`.
 - `diagnose-com [inputPath]` reports HWP process state, COM registration, HWP version, visibility, file-path checker registration, message box mode, and optional document-open success.
-- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md]` exists for this submission form.
+- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir]` exists for this submission form.
 - `extract-form-map` still creates a whole-package map, and `probe-form-map` still verifies HWP-selectability before editor-backed writes.
 - `apply-form-map --package` now supports text-only package writes, writes apply details when `--report` is supplied, and writes package-layout validation to a sibling `*.layout.md` report.
 - `SimpleZipArchive.WriteAllPreservingTemplate` now provides the core package writer that preserves template entry order, compression method, timestamps, and untouched entries.
@@ -16,6 +16,9 @@ This note supersedes the first-run issue log for filling the submission template
 - `HwpSession.Open` falls back to a temporary ASCII-like copy path when HWP COM fails to open the original path.
 - Image insertion through HWP automation now passes `sizeOption=1` for table-cell and text-anchor image writes so requested dimensions are honored.
 - The `r-and-d-startup-2026` profile renders supported body Markdown tables as HWPX table objects and queues supported Markdown image lines for HWP COM `InsertPicture`.
+- The fill report now includes template/profile compatibility, observed key table signatures, configured asset roots, resolved image paths, missing image candidate paths, and grouped missing-target causes.
+- `validate-layout` classifies findings as `expected-change`, `review-needed`, or `blocking`, and supports intentional table row-growth allowlists.
+- Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor index drift.
 
 ## Resolved Or Mostly Resolved
 
@@ -41,13 +44,14 @@ Status: resolved for this submission template, not a generic product feature.
 What changed:
 
 - `fill-submission-template` is now a supported CLI command.
-- The command has an explicit `r-and-d-startup-2026` profile and produces a report with cell writes, paragraph writes, rebuilt rows, Markdown table/image counts, rendered HWP table counts, image-anchor counts, image write results, missing targets, skipped unsafe targets, and unmapped image references.
+- The command has an explicit `r-and-d-startup-2026` profile and produces a report with template compatibility, cell writes, paragraph writes, rebuilt rows, Markdown table/image counts, rendered HWP table counts, image-anchor counts, resolved image paths, image write results, missing targets, grouped missing-target causes, skipped unsafe targets, and unmapped image references.
 - The implementation fills the existing template package instead of rebuilding the official form from scratch, then uses a HWP COM post-pass for queued image anchors when images are present.
 
 Remaining gap:
 
 - The command is profile-specific and hard-coded to this application form.
 - A reusable structured Markdown-to-official-form engine is still not available.
+- Template compatibility is a heuristic table-count/key-table check, not a full semantic profile migration engine.
 
 ### 3. Former gap: HWPX package writing in the core CLI
 
@@ -63,6 +67,7 @@ What changed:
 Remaining gap:
 
 - Package mode intentionally skips image writes as unsafe, reports them as skipped, and returns nonzero when unsafe/image writes are present. Images still require the HWP automation path.
+- Package-mode text anchors are now applied from later paragraphs toward earlier paragraphs, but a richer section-scoped anchor resolver is still needed for heavily duplicated text.
 
 ### 4. Cell text replacement must preserve nested tables and non-target paragraphs
 
@@ -115,6 +120,8 @@ Status: partially resolved.
 
 What changed:
 
+- `validate-layout` now distinguishes `expected-change`, `review-needed`, and `blocking` findings and prints a one-line verdict.
+- Intentional table row growth can be allowed with `--allow-table-row-change`, and the submission profile allows the known participant-table expansion.
 - `validate-content` now separates content checks from layout checks.
 - It detects suspicious Markdown artifacts, unresolved TODO-style placeholders, missing required strings, repeated guide-like text, and possible cell overflow warnings.
 
@@ -219,7 +226,8 @@ Recommended next step:
 ## Current Priority Order
 
 1. Add profile-specific `validate-content` checks for the submission template.
-2. Add regression fixtures for nested-table preservation, row-height expansion, Markdown artifact removal, and image sizing.
-3. Improve generic anchor resolution with section-scoped semantic anchors.
-4. Normalize tracked docs and examples to readable UTF-8 Korean.
-5. Add package-level image insertion only after a narrow fixture proves manifest/object/dimension handling is safe.
+2. Add regression fixtures for nested-table preservation, row-height expansion, Markdown artifact removal, image path resolution, image sizing, and repeated-anchor package writes.
+3. Improve generic anchor resolution with section-scoped semantic anchors and richer candidate reporting.
+4. Add the staged pipeline / final-promotion commands described in `test/openhwpsdk_개선사항_정리.md`.
+5. Normalize tracked docs and examples to readable UTF-8 Korean.
+6. Add package-level image insertion only after a narrow fixture proves manifest/object/dimension handling is safe.

@@ -79,7 +79,7 @@ Apply through HWP automation when image insertion or editor-backed behavior matt
 & $cli --visible apply-form-map '<template.hwpx>' 'test\out\template_form_map_filled.xml' 'test\out\template_form_map_applied.hwpx' --report 'test\out\template_form_map_apply.md'
 ```
 
-Use package mode only for text-only writes. Package mode reports `writeImage` entries as skipped and returns nonzero when such writes are present; use HWP COM mode for image insertion.
+Use package mode only for text-only writes. Package mode reports `writeImage` entries as skipped and returns nonzero when such writes are present; use HWP COM mode for image insertion. Package anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift.
 
 ```powershell
 & $cli apply-form-map --package '<template.hwpx>' 'test\out\template_form_map_filled.xml' 'test\out\template_form_map_package.hwpx' --report 'test\out\template_form_map_package_apply.md'
@@ -92,22 +92,24 @@ When `--report` is supplied, both COM and package mode write attempted/applied/f
 Use the dedicated profile for the supported startup R&D form:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --report 'test\out\submission_filled_report.md'
 ```
 
 Current profile behavior:
 
 - Supported Markdown body tables are rendered as real HWPX `tbl/tr/tc` objects cloned from existing template table style.
 - Supported Markdown image lines become temporary text anchors and are inserted by HWP COM `InsertPicture`.
-- The report lists total Markdown tables/images, rendered table counts, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
+- The report lists template/profile compatibility, total Markdown tables/images, rendered table counts, configured asset roots, resolved image paths, missing image candidate paths, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
 - If HWP COM cannot start, the pre-COM report still shows pending image anchors so missing image support is visible instead of silent.
 
 Then validate:
 
 ```powershell
-& $cli validate-layout '<template.hwpx>' 'test\out\submission_filled.hwpx' 'test\out\submission_filled_layout.md'
+& $cli validate-layout '<template.hwpx>' 'test\out\submission_filled.hwpx' 'test\out\submission_filled_layout.md' --allow-table-row-change 10
 & $cli validate-content 'test\out\submission_filled.hwpx' 'test\out\submission_filled_content.md' --require 'required text'
 ```
+
+Layout reports classify findings as `expected-change`, `review-needed`, or `blocking` and include a one-line verdict.
 
 ## Markdown Tables Into Existing HWPX Tables
 
