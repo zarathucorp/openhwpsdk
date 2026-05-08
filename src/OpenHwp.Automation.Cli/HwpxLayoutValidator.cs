@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -13,15 +14,21 @@ namespace OpenHwp.Automation.Cli
 
         public static bool Validate(string templatePath, string candidatePath, string reportPath)
         {
+            return Validate(templatePath, candidatePath, reportPath, new ValidationOptions());
+        }
+
+        public static bool Validate(string templatePath, string candidatePath, string reportPath, ValidationOptions options)
+        {
             var template = ReadSection(templatePath);
             var candidate = ReadSection(candidatePath);
             var templateTables = ExtractTables(template).ToList();
             var candidateTables = ExtractTables(candidate).ToList();
-            var issues = new List<string>();
+            var issues = new List<LayoutIssue>();
+            options = options ?? new ValidationOptions();
 
             if (candidateTables.Count < templateTables.Count)
             {
-                issues.Add(string.Format("FAIL: table count decreased: template={0}, candidate={1}", templateTables.Count, candidateTables.Count));
+                issues.Add(LayoutIssue.Blocking(string.Format("table count decreased: template={0}, candidate={1}", templateTables.Count, candidateTables.Count)));
             }
 
             var changedCoreTables = 0;
@@ -33,19 +40,19 @@ namespace OpenHwp.Automation.Cli
                 if (matchedIndex < 0)
                 {
                     changedCoreTables++;
-                    issues.Add(string.Format(
-                        "FAIL: template table {0} was not preserved in candidate order: cols {1}, width {2}, border {3}, first-label '{4}'",
+                    issues.Add(LayoutIssue.Blocking(string.Format(
+                        "template table {0} was not preserved in candidate order: cols {1}, width {2}, border {3}, first-label '{4}'",
                         index,
                         original.ColumnCount,
                         original.Width,
                         original.BorderFillId,
-                        Abbreviate(original.FirstLabels.FirstOrDefault() ?? string.Empty)));
+                        Abbreviate(original.FirstLabels.FirstOrDefault() ?? string.Empty))));
                     continue;
                 }
 
                 if (matchedIndex > candidateIndex)
                 {
-                    issues.Add(string.Format("WARN: {0} inserted table(s) before template table {1}", matchedIndex - candidateIndex, index));
+                    issues.Add(LayoutIssue.ReviewNeeded(string.Format("{0} inserted table(s) before template table {1}", matchedIndex - candidateIndex, index)));
                 }
 
                 var current = candidateTables[matchedIndex];
@@ -54,17 +61,29 @@ namespace OpenHwp.Automation.Cli
 
                 if (rowChanged > Math.Max(3, original.RowCount))
                 {
-                    issues.Add(string.Format("WARN: table {0} row count changed heavily: {1}->{2}", index, original.RowCount, current.RowCount));
+                    var message = string.Format("table {0} row count changed heavily: {1}->{2}", index, original.RowCount, current.RowCount);
+                    issues.Add(options.AllowedRowGrowthTables.Contains(index)
+                        ? LayoutIssue.ExpectedChange(message)
+                        : LayoutIssue.ReviewNeeded(message));
                 }
             }
 
             var templateParagraphs = ExtractDirectParagraphs(template).ToList();
             var candidateParagraphs = ExtractDirectParagraphs(candidate).ToList();
             var paragraphStyleDrift = CountLeadingParagraphStyleDrift(templateParagraphs, candidateParagraphs, Math.Min(80, Math.Min(templateParagraphs.Count, candidateParagraphs.Count)));
-            if (paragraphStyleDrift > 10)
+            if (paragraphStyleDrift > options.MaxLeadingParagraphStyleDrift)
             {
-                issues.Add(string.Format("FAIL: leading paragraph style drift is too high: {0}", paragraphStyleDrift));
+                issues.Add(LayoutIssue.Blocking(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "leading paragraph style drift is too high: {0} (max {1})",
+                    paragraphStyleDrift,
+                    options.MaxLeadingParagraphStyleDrift)));
             }
+
+            var expectedCount = issues.Count(issue => string.Equals(issue.Severity, LayoutIssue.ExpectedChangeSeverity, StringComparison.Ordinal));
+            var reviewCount = issues.Count(issue => string.Equals(issue.Severity, LayoutIssue.ReviewNeededSeverity, StringComparison.Ordinal));
+            var blockingCount = issues.Count(issue => string.Equals(issue.Severity, LayoutIssue.BlockingSeverity, StringComparison.Ordinal));
+            var verdict = blockingCount > 0 ? "blocking" : (reviewCount > 0 ? "review-needed" : "pass");
 
             var report = new StringBuilder();
             report.AppendLine("# HWPX Layout Validation");
@@ -75,6 +94,12 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine(string.Format("- candidate tables: {0}", candidateTables.Count));
             report.AppendLine(string.Format("- changed core tables: {0}", changedCoreTables));
             report.AppendLine(string.Format("- leading paragraph style drift: {0}", paragraphStyleDrift));
+            report.AppendLine(string.Format("- allowed row-growth tables: {0}", options.AllowedRowGrowthTables.Count == 0 ? "none" : string.Join(", ", options.AllowedRowGrowthTables.OrderBy(item => item).Select(item => item.ToString(CultureInfo.InvariantCulture)).ToArray())));
+            report.AppendLine(string.Format("- max leading paragraph style drift: {0}", options.MaxLeadingParagraphStyleDrift));
+            report.AppendLine(string.Format("- expected-change issues: {0}", expectedCount));
+            report.AppendLine(string.Format("- review-needed issues: {0}", reviewCount));
+            report.AppendLine(string.Format("- blocking issues: {0}", blockingCount));
+            report.AppendLine(string.Format("- verdict: {0}", verdict));
             report.AppendLine();
             report.AppendLine("## Issues");
             if (issues.Count == 0)
@@ -85,7 +110,7 @@ namespace OpenHwp.Automation.Cli
             {
                 foreach (var issue in issues)
                 {
-                    report.AppendLine("- " + issue);
+                    report.AppendLine("- " + issue.Severity + ": " + issue.Message);
                 }
             }
 
@@ -101,7 +126,7 @@ namespace OpenHwp.Automation.Cli
             }
 
             Console.Write(report.ToString());
-            return !issues.Any(issue => issue.StartsWith("FAIL:", StringComparison.Ordinal));
+            return blockingCount == 0;
         }
 
         private static int FindMatchingCoreTable(IList<TableSignature> candidateTables, TableSignature original, int startIndex)
@@ -259,6 +284,51 @@ namespace OpenHwp.Automation.Cli
             }
 
             return text.Substring(0, 37) + "...";
+        }
+
+        internal sealed class ValidationOptions
+        {
+            public ISet<int> AllowedRowGrowthTables { get; private set; }
+
+            public int MaxLeadingParagraphStyleDrift { get; set; }
+
+            public ValidationOptions()
+            {
+                AllowedRowGrowthTables = new HashSet<int>();
+                MaxLeadingParagraphStyleDrift = 10;
+            }
+        }
+
+        private sealed class LayoutIssue
+        {
+            public const string ExpectedChangeSeverity = "expected-change";
+            public const string ReviewNeededSeverity = "review-needed";
+            public const string BlockingSeverity = "blocking";
+
+            public string Severity { get; private set; }
+
+            public string Message { get; private set; }
+
+            public static LayoutIssue ExpectedChange(string message)
+            {
+                return new LayoutIssue(ExpectedChangeSeverity, message);
+            }
+
+            public static LayoutIssue ReviewNeeded(string message)
+            {
+                return new LayoutIssue(ReviewNeededSeverity, message);
+            }
+
+            public static LayoutIssue Blocking(string message)
+            {
+                return new LayoutIssue(BlockingSeverity, message);
+            }
+
+            private LayoutIssue(string severity, string message)
+            {
+                Severity = severity;
+                Message = message ?? string.Empty;
+            }
         }
 
         private sealed class TableSignature

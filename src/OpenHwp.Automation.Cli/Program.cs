@@ -938,7 +938,7 @@ namespace OpenHwp.Automation.Cli
             var layoutReportPath = string.IsNullOrWhiteSpace(reportPath)
                 ? null
                 : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(reportPath)) ?? Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(reportPath) + ".layout.md");
-            var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], layoutReportPath);
+            var layoutPassed = HwpxLayoutValidator.Validate(values[0], values[2], layoutReportPath, CreateSubmissionProfileLayoutOptions());
             var unmappedImages = SubmissionTemplateFiller.CountUnmappedMarkdownImages(result);
             return result.MissingTargets.Count == 0 &&
                    result.SkippedUnsafe.Count == 0 &&
@@ -995,6 +995,13 @@ namespace OpenHwp.Automation.Cli
             }
 
             return result.ImageWrites.All(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static HwpxLayoutValidator.ValidationOptions CreateSubmissionProfileLayoutOptions()
+        {
+            var options = new HwpxLayoutValidator.ValidationOptions();
+            options.AllowedRowGrowthTables.Add(10);
+            return options;
         }
 
         private static int ApplyFormMap(string[] args, bool visible, bool keepOpen)
@@ -1117,13 +1124,57 @@ namespace OpenHwp.Automation.Cli
 
         private static int ValidateLayout(string[] args)
         {
-            if (args.Length < 3)
+            var values = new List<string>();
+            var options = new HwpxLayoutValidator.ValidationOptions();
+            for (var index = 1; index < args.Length; index++)
             {
-                Console.Error.WriteLine("Usage: validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
+                if (string.Equals(args[index], "--allow-table-row-change", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[index], "--allow-row-growth", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for " + args[index] + ".");
+                        return 1;
+                    }
+
+                    index++;
+                    if (!AddTableIndexes(options.AllowedRowGrowthTables, args[index]))
+                    {
+                        return 1;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--max-leading-style-drift", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --max-leading-style-drift.");
+                        return 1;
+                    }
+
+                    index++;
+                    options.MaxLeadingParagraphStyleDrift = ParseIntArgument(args[index], "max-leading-style-drift");
+                    if (options.MaxLeadingParagraphStyleDrift < 0)
+                    {
+                        Console.Error.WriteLine("--max-leading-style-drift must be zero or greater.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
+                values.Add(args[index]);
+            }
+
+            if (values.Count < 2 || values.Count > 3)
+            {
+                Console.Error.WriteLine("Usage: validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
                 return 1;
             }
 
-            var passed = HwpxLayoutValidator.Validate(args[1], args[2], args.Length >= 4 ? args[3] : null);
+            var passed = HwpxLayoutValidator.Validate(values[0], values[1], values.Count >= 3 ? values[2] : null, options);
             return passed ? 0 : 2;
         }
 
@@ -1622,6 +1673,24 @@ namespace OpenHwp.Automation.Cli
             return value;
         }
 
+        private static bool AddTableIndexes(ISet<int> indexes, string raw)
+        {
+            foreach (var token in (raw ?? string.Empty).Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = token.Trim();
+                int value;
+                if (!int.TryParse(trimmed, out value) || value < 0)
+                {
+                    Console.Error.WriteLine("table index must be a zero or positive integer: " + trimmed);
+                    return false;
+                }
+
+                indexes.Add(value);
+            }
+
+            return true;
+        }
+
         private static int WriteTextResult(string text, string outputPath)
         {
             if (string.IsNullOrWhiteSpace(outputPath))
@@ -1681,7 +1750,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
-            Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath]");
+            Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
