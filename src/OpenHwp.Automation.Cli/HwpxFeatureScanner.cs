@@ -73,17 +73,39 @@ namespace OpenHwp.Automation.Cli
             AppendCoverageRow(builder, "merged cells", summary.Count("mergedCells"), "detected and guarded; forced writes require explicit opt-in", "no generic merged-cell creation API");
             AppendCoverageRow(builder, "nested tables", summary.Count("nestedTables"), "detected; parent-cell text separated from nested content", "no generic nested-table creation API");
             AppendCoverageRow(builder, "images", summary.Count("pictures") + summary.Count("embeddedImages"), "COM insertion and package-level BinData/hp:pic embedding", "editor-specific wrapping/positioning needs visual verification");
-            AppendCoverageRow(builder, "drawing shapes", summary.Count("drawingShapes"), "inventory only", "line/rect/ellipse/textbox/group editing is not implemented");
-            AppendCoverageRow(builder, "fields/forms", summary.Count("fields") + summary.Count("formObjects"), "COM field commands exist", "package-level field/form extraction and writing are not implemented");
-            AppendCoverageRow(builder, "headers/footers", summary.Count("pageHeaders") + summary.Count("pageFooters"), "not present in this corpus", "needs fixtures before implementation claims");
+            AppendCoverageRow(builder, "drawing shapes", summary.Count("drawingShapes"), "inventory only with type-level signal counts", "line/rect/ellipse/textbox/group editing is not implemented");
+            AppendCoverageRow(builder, "fields/forms", summary.Count("fields") + summary.Count("fieldBegins") + summary.Count("pressFields") + summary.Count("formObjects"), "COM field commands exist; marker counts are reported separately", "package-level field/form extraction and writing are not implemented");
+            AppendCoverageRow(builder, "headers/footers", summary.Count("pageHeaders") + summary.Count("pageFooters") + summary.Count("pageHeaderReferences") + summary.Count("pageFooterReferences"), "inventory only", "needs fixtures before implementation claims");
             AppendCoverageRow(builder, "footnotes/endnotes", summary.Count("footnotes") + summary.Count("endnotes"), "not present in this corpus", "needs fixtures before implementation claims");
             AppendCoverageRow(builder, "equations/charts/OLE", summary.Count("equations") + summary.Count("charts") + summary.Count("oleObjects"), "not present in this corpus", "needs fixtures before implementation claims");
+            AppendCoverageRow(builder, "captions/bookmarks/references", summary.Count("captions") + summary.Count("bookmarks") + summary.Count("crossReferences") + summary.Count("tocMarkers") + summary.Count("indexMarkers"), "inventory only", "caption/reference insertion and refresh are not implemented");
+            AppendCoverageRow(builder, "media", summary.Count("videos") + summary.Count("sounds"), "inventory only", "media insertion/editing is not implemented");
+
+            builder.AppendLine();
+            builder.AppendLine("## Detailed Feature Groups");
+            builder.AppendLine();
+            AppendFeatureGroup(builder, summary, "Package Parts", new[] { "entries", "sectionParts", "documentHeadParts", "pageHeaderParts", "pageFooterParts", "footnoteParts", "endnoteParts", "binDataEntries", "imageBinDataEntries", "oleLikeBinDataEntries", "mediaBinDataEntries" });
+            AppendFeatureGroup(builder, summary, "Headers And Notes", new[] { "pageHeaders", "pageFooters", "pageHeaderReferences", "pageFooterReferences", "footnotes", "endnotes", "memos", "comments" });
+            AppendFeatureGroup(builder, summary, "Fields And Forms", new[] { "fieldMarkers", "fields", "fieldBegins", "fieldEnds", "pressFields", "formObjects", "checkBoxes", "radioButtons", "comboBoxes", "editFields" });
+            AppendFeatureGroup(builder, summary, "Shapes", new[] { "drawingShapes", "lines", "rectangles", "ellipses", "arcs", "polygons", "curves", "containers", "groups", "textBoxes", "textArt", "shapeObjects" });
+            AppendFeatureGroup(builder, summary, "References", new[] { "captions", "bookmarks", "crossReferences", "hyperlinks", "tocMarkers", "indexMarkers", "autoNumbers", "pageNumbers" });
+            AppendFeatureGroup(builder, summary, "Embedded Objects", new[] { "equations", "charts", "oleObjects", "videos", "sounds" });
+
+            builder.AppendLine();
+            builder.AppendLine("## Missing Corpus Signals");
+            builder.AppendLine();
+            foreach (var item in GetMissingCorpusSignals(summary))
+            {
+                builder.AppendLine("- " + item);
+            }
+            builder.AppendLine();
+            builder.AppendLine("Counts in this scan are inventory signals, not proof that writing/editing is implemented. `oleLikeBinDataEntries` is a filename/extension heuristic and should be confirmed with a fixture before treating it as a real OLE object.");
 
             builder.AppendLine();
             builder.AppendLine("## Files");
             builder.AppendLine();
-            builder.AppendLine("| file | tables | cells | merged | nested | pictures | bindata | shapes | fields | xml errors |");
-            builder.AppendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+            builder.AppendLine("| file | tables | cells | merged | nested | pictures | bindata | shapes | fields/forms | headers | notes | refs | objects | xml errors |");
+            builder.AppendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
             foreach (var file in summary.Files.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase))
             {
                 builder.Append("| ");
@@ -103,7 +125,15 @@ namespace OpenHwp.Automation.Cli
                 builder.Append(" | ");
                 builder.Append(file.Count("drawingShapes").ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
-                builder.Append((file.Count("fields") + file.Count("formObjects")).ToString(CultureInfo.InvariantCulture));
+                builder.Append((file.Count("fields") + file.Count("fieldBegins") + file.Count("pressFields") + file.Count("formObjects")).ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append((file.Count("pageHeaders") + file.Count("pageFooters") + file.Count("pageHeaderReferences") + file.Count("pageFooterReferences")).ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append((file.Count("footnotes") + file.Count("endnotes") + file.Count("memos") + file.Count("comments")).ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append((file.Count("captions") + file.Count("bookmarks") + file.Count("crossReferences") + file.Count("tocMarkers") + file.Count("indexMarkers")).ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append((file.Count("equations") + file.Count("charts") + file.Count("oleObjects") + file.Count("videos") + file.Count("sounds")).ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
                 builder.Append(file.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
                 builder.AppendLine(" |");
@@ -150,6 +180,59 @@ namespace OpenHwp.Automation.Cli
             builder.AppendLine(" |");
         }
 
+        private static void AppendFeatureGroup(StringBuilder builder, ScanSummary summary, string title, IEnumerable<string> featureNames)
+        {
+            builder.AppendLine("### " + title);
+            builder.AppendLine();
+            builder.AppendLine("| feature | count |");
+            builder.AppendLine("| --- | ---: |");
+            foreach (var name in featureNames)
+            {
+                builder.Append("| ");
+                builder.Append(name);
+                builder.Append(" | ");
+                builder.Append(summary.Count(name).ToString(CultureInfo.InvariantCulture));
+                builder.AppendLine(" |");
+            }
+
+            builder.AppendLine();
+        }
+
+        private static IEnumerable<string> GetMissingCorpusSignals(ScanSummary summary)
+        {
+            var missing = new List<string>();
+            AddMissingSignal(missing, summary, "page header body", "pageHeaders", "pageHeaderParts");
+            AddMissingSignal(missing, summary, "page footer body", "pageFooters", "pageFooterParts");
+            AddMissingSignal(missing, summary, "page header reference", "pageHeaderReferences");
+            AddMissingSignal(missing, summary, "page footer reference", "pageFooterReferences");
+            AddMissingSignal(missing, summary, "footnote body", "footnotes", "footnoteParts");
+            AddMissingSignal(missing, summary, "endnote body", "endnotes", "endnoteParts");
+            AddMissingSignal(missing, summary, "memo", "memos");
+            AddMissingSignal(missing, summary, "comment", "comments");
+            AddMissingSignal(missing, summary, "press field / 누름틀", "pressFields");
+            AddMissingSignal(missing, summary, "form object", "formObjects");
+            AddMissingSignal(missing, summary, "bookmark", "bookmarks");
+            AddMissingSignal(missing, summary, "caption", "captions");
+            AddMissingSignal(missing, summary, "cross reference", "crossReferences");
+            AddMissingSignal(missing, summary, "table of contents marker", "tocMarkers");
+            AddMissingSignal(missing, summary, "index marker", "indexMarkers");
+            AddMissingSignal(missing, summary, "text box", "textBoxes");
+            AddMissingSignal(missing, summary, "equation", "equations");
+            AddMissingSignal(missing, summary, "chart", "charts");
+            AddMissingSignal(missing, summary, "OLE object", "oleObjects", "oleLikeBinDataEntries");
+            AddMissingSignal(missing, summary, "video", "videos");
+            AddMissingSignal(missing, summary, "sound", "sounds");
+            return missing.Count == 0 ? new[] { "No tracked feature signal is missing from the current corpus." } : missing;
+        }
+
+        private static void AddMissingSignal(ICollection<string> missing, ScanSummary summary, string label, params string[] featureNames)
+        {
+            if (featureNames.All(name => summary.Count(name) == 0))
+            {
+                missing.Add(label + " fixture is missing or not detected");
+            }
+        }
+
         private static IList<string> ResolveHwpxFiles(string fullPath)
         {
             if (File.Exists(fullPath))
@@ -188,9 +271,15 @@ namespace OpenHwp.Automation.Cli
 
             result.Add("entries", entries.Count);
             result.Add("binDataEntries", entries.Keys.Count(name => name.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase)));
+            result.Add("imageBinDataEntries", entries.Keys.Count(IsImageBinDataEntry));
+            result.Add("oleLikeBinDataEntries", entries.Keys.Count(IsOleLikeBinDataEntry));
+            result.Add("mediaBinDataEntries", entries.Keys.Count(IsMediaBinDataEntry));
             result.Add("sectionParts", entries.Keys.Count(name => name.StartsWith("Contents/section", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)));
-            result.Add("documentHeadParts", entries.Keys.Count(name => name.EndsWith("header.xml", StringComparison.OrdinalIgnoreCase)));
-            result.Add("footerParts", entries.Keys.Count(name => name.EndsWith("footer.xml", StringComparison.OrdinalIgnoreCase)));
+            result.Add("documentHeadParts", entries.Keys.Count(IsDocumentHeadPart));
+            result.Add("pageHeaderParts", entries.Keys.Count(IsPageHeaderPart));
+            result.Add("pageFooterParts", entries.Keys.Count(IsPageFooterPart));
+            result.Add("footnoteParts", entries.Keys.Count(IsFootnotePart));
+            result.Add("endnoteParts", entries.Keys.Count(IsEndnotePart));
 
             foreach (var entry in entries.Where(item => IsXmlEntry(item.Key)))
             {
@@ -206,13 +295,13 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
-                ScanDocument(document, result);
+                ScanDocument(entry.Key, document, result);
             }
 
             return result;
         }
 
-        private static void ScanDocument(XDocument document, FileScanResult result)
+        private static void ScanDocument(string path, XDocument document, FileScanResult result)
         {
             var tables = document.Descendants(Hp + "tbl").ToList();
             result.Add("tables", tables.Count);
@@ -226,8 +315,39 @@ namespace OpenHwp.Automation.Cli
             {
                 switch (element.Name.LocalName)
                 {
+                    case "autoNum":
+                    case "autoNumFormat":
+                        result.Increment("autoNumbers");
+                        break;
+                    case "bookmark":
+                    case "bookMark":
+                    case "bookmarkBegin":
+                    case "bookMarkBegin":
+                        result.Increment("bookmarks");
+                        break;
+                    case "caption":
+                    case "cap":
+                        result.Increment("captions");
+                        break;
                     case "charPr":
                         result.Increment("charStyles");
+                        break;
+                    case "checkBtn":
+                    case "checkBox":
+                        result.Increment("checkBoxes");
+                        result.Increment("formObjects");
+                        break;
+                    case "comboBox":
+                    case "comboBtn":
+                    case "listBox":
+                        result.Increment("comboBoxes");
+                        result.Increment("formObjects");
+                        break;
+                    case "comment":
+                        if (IsAuthoringContentPart(path) || IsHwpParagraphElement(element))
+                        {
+                            result.Increment("comments");
+                        }
                         break;
                     case "paraPr":
                         result.Increment("paragraphStyles");
@@ -242,23 +362,42 @@ namespace OpenHwp.Automation.Cli
                         result.Increment("controls");
                         break;
                     case "fieldBegin":
+                        result.Increment("fieldBegins");
+                        result.Increment("fieldMarkers");
+                        break;
+                    case "fieldEnd":
+                        result.Increment("fieldEnds");
+                        result.Increment("fieldMarkers");
+                        break;
                     case "field":
                         result.Increment("fields");
+                        result.Increment("fieldMarkers");
                         break;
                     case "formObject":
                         result.Increment("formObjects");
                         break;
                     case "header":
-                        result.Increment("pageHeaders");
+                        IncrementHeaderOrFooter(path, element, result, "pageHeaders", "pageHeaderReferences");
                         break;
                     case "footer":
-                        result.Increment("pageFooters");
+                        IncrementHeaderOrFooter(path, element, result, "pageFooters", "pageFooterReferences");
                         break;
                     case "footNote":
                         result.Increment("footnotes");
                         break;
                     case "endNote":
                         result.Increment("endnotes");
+                        break;
+                    case "hyperlink":
+                    case "hyplnk":
+                        result.Increment("hyperlinks");
+                        break;
+                    case "idxmark":
+                    case "indexmark":
+                        result.Increment("indexMarkers");
+                        break;
+                    case "memo":
+                        result.Increment("memos");
                         break;
                     case "equation":
                         result.Increment("equations");
@@ -267,24 +406,122 @@ namespace OpenHwp.Automation.Cli
                         result.Increment("charts");
                         break;
                     case "ole":
+                    case "oleObject":
                         result.Increment("oleObjects");
+                        break;
+                    case "pageNum":
+                    case "pageNumCtrl":
+                    case "pageNumFormat":
+                        result.Increment("pageNumbers");
+                        break;
+                    case "radioBtn":
+                    case "radioButton":
+                        result.Increment("radioButtons");
+                        result.Increment("formObjects");
+                        break;
+                    case "crossRef":
+                    case "crossReference":
+                        result.Increment("crossReferences");
+                        break;
+                    case "scrollBar":
+                    case "edit":
+                    case "editField":
+                        result.Increment("editFields");
+                        result.Increment("formObjects");
+                        break;
+                    case "snd":
+                    case "sound":
+                        result.Increment("sounds");
+                        break;
+                    case "textBox":
+                        IncrementDrawingShape(path, element, result, "textBoxes");
+                        break;
+                    case "toc":
+                    case "tocMark":
+                    case "tocmark":
+                    case "tableOfContents":
+                        result.Increment("tocMarkers");
+                        break;
+                    case "press":
+                    case "pressField":
+                    case "placeholder":
+                        result.Increment("pressFields");
+                        result.Increment("fieldMarkers");
                         break;
                     case "video":
                         result.Increment("videos");
                         break;
                     case "line":
+                        IncrementDrawingShape(path, element, result, "lines");
+                        break;
                     case "rect":
+                        IncrementDrawingShape(path, element, result, "rectangles");
+                        break;
                     case "ellipse":
+                        IncrementDrawingShape(path, element, result, "ellipses");
+                        break;
                     case "arc":
+                        IncrementDrawingShape(path, element, result, "arcs");
+                        break;
                     case "polygon":
+                        IncrementDrawingShape(path, element, result, "polygons");
+                        break;
                     case "curve":
+                        IncrementDrawingShape(path, element, result, "curves");
+                        break;
                     case "container":
+                        IncrementDrawingShape(path, element, result, "containers");
+                        break;
+                    case "group":
+                    case "grp":
+                        IncrementDrawingShape(path, element, result, "groups");
+                        break;
                     case "textart":
+                        IncrementDrawingShape(path, element, result, "textArt");
+                        break;
                     case "shapeObject":
-                        result.Increment("drawingShapes");
+                        IncrementDrawingShape(path, element, result, "shapeObjects");
                         break;
                 }
             }
+        }
+
+        private static void IncrementDrawingShape(string path, XElement element, FileScanResult result, string featureName)
+        {
+            if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
+            {
+                return;
+            }
+
+            result.Increment(featureName);
+            result.Increment("drawingShapes");
+        }
+
+        private static void IncrementHeaderOrFooter(string path, XElement element, FileScanResult result, string bodyCountName, string referenceCountName)
+        {
+            if (IsHeaderOrFooterBody(path, element, bodyCountName))
+            {
+                result.Increment(bodyCountName);
+            }
+            else
+            {
+                result.Increment(referenceCountName);
+            }
+        }
+
+        private static bool IsHeaderOrFooterBody(string path, XElement element, string bodyCountName)
+        {
+            if ((bodyCountName == "pageHeaders" && IsPageHeaderPart(path)) ||
+                (bodyCountName == "pageFooters" && IsPageFooterPart(path)))
+            {
+                return true;
+            }
+
+            return IsSectionPart(path) &&
+                   IsHwpParagraphElement(element) &&
+                   (element.Descendants(Hp + "subList").Any() ||
+                    element.Descendants(Hp + "p").Any() ||
+                    element.Descendants(Hp + "tbl").Any());
         }
 
         private static bool IsXmlEntry(string path)
@@ -292,6 +529,96 @@ namespace OpenHwp.Automation.Cli
             return path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith(".hpf", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith(".rdf", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAuthoringContentPart(string path)
+        {
+            return IsSectionPart(path) ||
+                   IsPageHeaderPart(path) ||
+                   IsPageFooterPart(path) ||
+                   IsFootnotePart(path) ||
+                   IsEndnotePart(path);
+        }
+
+        private static bool IsSectionPart(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            var fileName = Path.GetFileName(normalized);
+            return normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                   fileName.StartsWith("section", StringComparison.OrdinalIgnoreCase) &&
+                   fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDocumentHeadPart(string path)
+        {
+            return string.Equals(NormalizePackagePath(path), "Contents/header.xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPageHeaderPart(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                   normalized.IndexOf("header", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   !IsDocumentHeadPart(normalized);
+        }
+
+        private static bool IsPageFooterPart(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                   normalized.IndexOf("footer", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsFootnotePart(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                   normalized.IndexOf("footnote", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsEndnotePart(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                   normalized.IndexOf("endnote", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsHwpParagraphElement(XElement element)
+        {
+            return element.Name.NamespaceName == Hp.NamespaceName;
+        }
+
+        private static bool IsImageBinDataEntry(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase) &&
+                   HasExtension(normalized, ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff");
+        }
+
+        private static bool IsOleLikeBinDataEntry(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase) &&
+                   (HasExtension(normalized, ".ole", ".bin", ".dat") ||
+                    normalized.IndexOf("ole", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static bool IsMediaBinDataEntry(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            return normalized.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase) &&
+                   HasExtension(normalized, ".mp4", ".avi", ".wmv", ".wav", ".mp3", ".m4a");
+        }
+
+        private static bool HasExtension(string path, params string[] extensions)
+        {
+            var extension = Path.GetExtension(path ?? string.Empty);
+            return extensions.Any(item => string.Equals(extension, item, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizePackagePath(string path)
+        {
+            return (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
         }
 
         private static int GetInt(XElement element, string attributeName, int defaultValue)
