@@ -31,7 +31,7 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("mappingScope", "package"),
                 new XAttribute("generatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
 
-            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes and package-level image embedding; use HWP automation when editor-backed behavior is required. Field targets are inventory-only until field writing is explicitly implemented."));
+            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes, package-level image embedding, and package press-field writes. Non-press field/form targets are inventory-only until field/form writing is explicitly implemented. Use HWP automation when editor-backed behavior is required."));
             root.Add(BuildPackageElement(entries, xmlDocuments, writablePartNames));
 
             var tablesElement = new XElement("tables");
@@ -140,6 +140,16 @@ namespace OpenHwp.Automation.Cli
                 ApplyAnchorWrites(hwp, anchor, mapDirectory, result, maxOperations);
             }
 
+            foreach (var field in document.Descendants("field"))
+            {
+                if (LimitReached(result, maxOperations))
+                {
+                    break;
+                }
+
+                ApplyFieldWritesUnsupported(field, result, maxOperations, "field writes are package-mode only");
+            }
+
             return result;
         }
 
@@ -197,6 +207,16 @@ namespace OpenHwp.Automation.Cli
                 }
 
                 ApplyPackageCellWrites(entries, xmlDocuments, touchedParts, cell, mapDirectory, textStyleGuard, result, maxOperations);
+            }
+
+            foreach (var field in mapDocument.Descendants("field"))
+            {
+                if (LimitReached(result, maxOperations))
+                {
+                    break;
+                }
+
+                ApplyPackageFieldWrites(xmlDocuments, touchedParts, field, textStyleGuard, result, maxOperations);
             }
 
             foreach (var anchor in OrderPackageAnchorsForSafeWrites(mapDocument.Descendants("anchor")))
@@ -840,6 +860,7 @@ namespace OpenHwp.Automation.Cli
             int fieldOrderInPart)
         {
             var kind = NormalizeFieldKind(element.Name.LocalName);
+            var writeSupported = IsPackageWritableFieldKind(kind);
             var fieldElement = new XElement(
                 "field",
                 new XAttribute("id", "field-" + fieldIndex.ToString("0000", CultureInfo.InvariantCulture)),
@@ -851,13 +872,17 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("section", InferSectionName(partName)),
                 new XAttribute("fieldIndex", fieldIndex.ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("fieldOrderInPart", fieldOrderInPart.ToString(CultureInfo.InvariantCulture)),
-                new XAttribute("name", FirstNonEmpty(GetString(element, "name"), GetString(element, "fieldName"), GetString(element, "id"), GetString(element, "caption"))),
+                new XAttribute("name", GetFieldTargetName(element)),
                 new XAttribute("value", GetString(element, "value")),
                 new XAttribute("type", GetString(element, "type")),
                 new XAttribute("command", GetString(element, "command")),
-                new XAttribute("writeSupported", "false"),
+                new XAttribute("writeSupported", writeSupported ? "true" : "false"),
+                new XAttribute("writeMode", writeSupported ? "package" : string.Empty),
                 new XElement("currentText", NormalizeText(TextOf(element))),
-                new XElement("writeText", new XAttribute("enabled", "false")));
+                new XElement(
+                    "writeText",
+                    new XAttribute("enabled", writeSupported ? "true" : "false"),
+                    new XAttribute("validateCurrentText", "true")));
 
             var attrs = ExtractKnownAttributes(element, new[] { "name", "caption", "id", "idRef", "type", "command", "fieldName", "value", "editable", "enabled", "printable", "tabOrder", "radioGroupName", "groupName" });
             if (!string.IsNullOrWhiteSpace(attrs))
@@ -929,6 +954,11 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static bool IsPackageWritableFieldKind(string kind)
+        {
+            return string.Equals(kind, "press", StringComparison.Ordinal);
+        }
+
         private static string ExtractKnownAttributes(XElement element, IEnumerable<string> names)
         {
             var parts = new List<string>();
@@ -942,6 +972,15 @@ namespace OpenHwp.Automation.Cli
             }
 
             return string.Join("; ", parts.ToArray());
+        }
+
+        private static string GetFieldTargetName(XElement element)
+        {
+            return FirstNonEmpty(
+                GetString(element, "name"),
+                GetString(element, "fieldName"),
+                GetString(element, "id"),
+                GetString(element, "caption"));
         }
 
         private static string InferSectionName(string partName)
@@ -1156,6 +1195,30 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static void ApplyFieldWritesUnsupported(XElement field, ApplyResult result, int maxOperations, string note)
+        {
+            if (!HasFieldTextWrite(field))
+            {
+                return;
+            }
+
+            if (!BeginOperation(result, maxOperations))
+            {
+                return;
+            }
+
+            var target = string.Format(
+                CultureInfo.InvariantCulture,
+                "kind={0}, name={1}, part={2}, order={3}",
+                GetString(field, "kind"),
+                GetString(field, "name"),
+                GetString(field, "partPath"),
+                GetString(field, "fieldOrderInPart"));
+            result.SkippedUnsafe++;
+            Console.WriteLine("skip unsupported field write: id={0}", GetString(field, "id"));
+            RecordApplyOperation(result, "field", GetString(field, "id"), target, "SKIPPED", note ?? string.Empty);
+        }
+
         private static void ApplyPackageCellWrites(
             IDictionary<string, byte[]> packageEntries,
             IDictionary<string, XDocument> xmlDocuments,
@@ -1340,6 +1403,77 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static void ApplyPackageFieldWrites(
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement field,
+            TextStyleGuard textStyleGuard,
+            ApplyResult result,
+            int maxOperations)
+        {
+            var id = GetString(field, "id");
+            var name = GetString(field, "name");
+            var kind = GetString(field, "kind");
+            var target = string.Format(
+                CultureInfo.InvariantCulture,
+                "kind={0}, name={1}, part={2}, order={3}",
+                kind,
+                name,
+                GetString(field, "partPath"),
+                GetString(field, "fieldOrderInPart"));
+
+            var writeSupported = GetBool(field, "writeSupported", false);
+            if (!writeSupported)
+            {
+                if (HasFieldTextWrite(field))
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    result.SkippedUnsafe++;
+                    Console.WriteLine("skip unsupported package field write: id={0}", id);
+                    RecordApplyOperation(result, "field", id, target, "SKIPPED", "writeSupported=false");
+                }
+
+                return;
+            }
+
+            var writeText = field.Element("writeText");
+            if (writeText == null || !GetBool(writeText, "enabled", false))
+            {
+                return;
+            }
+
+            var shouldClear = GetBool(writeText, "clear", false);
+            var text = writeText.Value ?? string.Empty;
+            if (!shouldClear && text.Length == 0)
+            {
+                return;
+            }
+
+            if (!BeginOperation(result, maxOperations))
+            {
+                return;
+            }
+
+            string reason;
+            int repairedRuns;
+            if (TryApplyPackageFieldText(xmlDocuments, touchedParts, field, text, textStyleGuard, out reason, out repairedRuns))
+            {
+                result.Applied++;
+                Console.WriteLine("package set field: id={0}, text={1}", id, Abbreviate(text, 80));
+                RecordApplyOperation(result, "field", id, target, "APPLIED", repairedRuns > 0 ? "package press field; normalized small charPr runs=" + repairedRuns.ToString(CultureInfo.InvariantCulture) : "package press field");
+            }
+            else
+            {
+                result.Failed++;
+                Console.WriteLine("package set field failed: id={0}, reason={1}", id, reason);
+                RecordApplyOperation(result, "field", id, target, "FAILED", reason);
+            }
+        }
+
         private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
@@ -1405,6 +1539,44 @@ namespace OpenHwp.Automation.Cli
             var replaceAnchorText = GetBool(mapAnchor.Element("writeText"), "replaceAnchorText", true);
             var finalText = replaceAnchorText ? text : TextOf(paragraph) + text;
             if (!TrySetParagraphText(paragraph, finalText, textStyleGuard, out reason, out repairedRuns))
+            {
+                return false;
+            }
+
+            touchedParts.Add(partPath);
+            return true;
+        }
+
+        private static bool TryApplyPackageFieldText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapField, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        {
+            repairedRuns = 0;
+            var partPath = ResolveMapPartPath(mapField);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map field does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement targetField;
+            if (!TryResolvePackageField(document, mapField, out targetField, out reason))
+            {
+                return false;
+            }
+
+            if (!IsPackageWritableFieldKind(NormalizeFieldKind(targetField.Name.LocalName)))
+            {
+                reason = "package field writer only supports press fields";
+                return false;
+            }
+
+            if (!TrySetFieldText(targetField, text, textStyleGuard, out reason, out repairedRuns))
             {
                 return false;
             }
@@ -1661,6 +1833,103 @@ namespace OpenHwp.Automation.Cli
             return false;
         }
 
+        private static bool TryResolvePackageField(XDocument document, XElement mapField, out XElement targetField, out string reason)
+        {
+            var fields = document.Descendants().Where(IsFieldTargetElement).ToList();
+            var fieldOrderInPart = GetInt(mapField, "fieldOrderInPart", -1);
+            if (fieldOrderInPart >= 0 && fieldOrderInPart < fields.Count)
+            {
+                var orderedField = fields[fieldOrderInPart];
+                if (MapFieldIdentityMatches(mapField, orderedField))
+                {
+                    if (MapFieldCurrentTextMatches(mapField, orderedField))
+                    {
+                        targetField = orderedField;
+                        reason = string.Empty;
+                        return true;
+                    }
+
+                    targetField = null;
+                    reason = "field currentText mismatch: " + DescribeFieldTextMismatch(mapField, orderedField);
+                    return false;
+                }
+            }
+
+            var candidates = fields.Where(field => MapFieldIdentityMatches(mapField, field)).ToList();
+            if (candidates.Count == 0)
+            {
+                targetField = null;
+                reason = "field target was not found in package part";
+                return false;
+            }
+
+            var currentTextMatches = candidates.Where(field => MapFieldCurrentTextMatches(mapField, field)).ToList();
+            if (currentTextMatches.Count == 1)
+            {
+                targetField = currentTextMatches[0];
+                reason = string.Empty;
+                return true;
+            }
+
+            if (candidates.Count == 1)
+            {
+                targetField = null;
+                reason = "field currentText mismatch: " + DescribeFieldTextMismatch(mapField, candidates[0]);
+                return false;
+            }
+
+            targetField = null;
+            reason = string.Format(CultureInfo.InvariantCulture, "field target is ambiguous: matches={0}, currentTextMatches={1}", candidates.Count, currentTextMatches.Count);
+            return false;
+        }
+
+        private static bool MapFieldIdentityMatches(XElement mapField, XElement targetField)
+        {
+            var expectedKind = GetString(mapField, "kind");
+            if (!string.IsNullOrWhiteSpace(expectedKind) &&
+                !string.Equals(NormalizeFieldKind(targetField.Name.LocalName), expectedKind, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var expectedName = GetString(mapField, "name");
+            if (!string.IsNullOrWhiteSpace(expectedName) &&
+                !string.Equals(GetFieldTargetName(targetField), expectedName, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool MapFieldCurrentTextMatches(XElement mapField, XElement targetField)
+        {
+            var writeText = mapField.Element("writeText");
+            if (writeText != null && !GetBool(writeText, "validateCurrentText", true))
+            {
+                return true;
+            }
+
+            var expected = NormalizeText(mapField.Element("currentText") == null ? string.Empty : mapField.Element("currentText").Value);
+            if (string.IsNullOrWhiteSpace(expected))
+            {
+                return true;
+            }
+
+            return string.Equals(NormalizeText(TextOf(targetField)), expected, StringComparison.Ordinal);
+        }
+
+        private static string DescribeFieldTextMismatch(XElement mapField, XElement targetField)
+        {
+            var expected = NormalizeText(mapField.Element("currentText") == null ? string.Empty : mapField.Element("currentText").Value);
+            var actual = NormalizeText(TextOf(targetField));
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "expected='{0}', actual='{1}'",
+                Abbreviate(expected, 40),
+                Abbreviate(actual, 40));
+        }
+
         private static int CountMatchingParagraphs(IEnumerable<XElement> paragraphs, string text)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -1760,6 +2029,48 @@ namespace OpenHwp.Automation.Cli
 
             paragraph.Elements(Hp + "linesegarray").Remove();
             repairedRuns = textStyleGuard == null ? 0 : textStyleGuard.EnsureMinimumCharHeight(paragraph);
+            reason = string.Empty;
+            return true;
+        }
+
+        private static bool TrySetFieldText(XElement field, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        {
+            repairedRuns = 0;
+            if (field == null)
+            {
+                reason = "field is missing";
+                return false;
+            }
+
+            if (!IsPackageWritableFieldKind(NormalizeFieldKind(field.Name.LocalName)))
+            {
+                reason = "package field writer only supports press fields";
+                return false;
+            }
+
+            var textNodes = field.Descendants(Hp + "t").ToList();
+            XElement firstTextNode;
+            if (textNodes.Count == 0)
+            {
+                firstTextNode = new XElement(Hp + "t");
+                field.Add(firstTextNode);
+                textNodes.Add(firstTextNode);
+            }
+            else
+            {
+                firstTextNode = textNodes[0];
+            }
+
+            firstTextNode.Value = NormalizePackageWriteText(text);
+            for (var index = 1; index < textNodes.Count; index++)
+            {
+                textNodes[index].Value = string.Empty;
+            }
+
+            var repairScope = field.Ancestors(Hp + "p").FirstOrDefault() ?? field;
+            repairScope.Descendants(Hp + "linesegarray").Remove();
+            repairScope.Elements(Hp + "linesegarray").Remove();
+            repairedRuns = textStyleGuard == null ? 0 : textStyleGuard.EnsureMinimumCharHeight(repairScope);
             reason = string.Empty;
             return true;
         }
@@ -2002,6 +2313,14 @@ namespace OpenHwp.Automation.Cli
         {
             var writeText = cell.Element("writeText");
             return writeText != null && (GetBool(writeText, "clear", false) || !string.IsNullOrEmpty(writeText.Value));
+        }
+
+        private static bool HasFieldTextWrite(XElement field)
+        {
+            var writeText = field.Element("writeText");
+            return writeText != null &&
+                   GetBool(writeText, "enabled", false) &&
+                   (GetBool(writeText, "clear", false) || !string.IsNullOrEmpty(writeText.Value));
         }
 
         private static bool HasImageWrite(XElement cell)
