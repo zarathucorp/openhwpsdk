@@ -184,6 +184,13 @@
 
 목표: 기존 표 채우기에서 "표를 새로 만들고 조작하는 기능"으로 확장한다.
 
+구현 상태(2026-05-11):
+
+- `table-create-package` 명령으로 COM 없이 새 단순 표를 만든다.
+- 기존 HWPX 안의 병합/중첩 없는 top-level 표를 reference style로 복제하고, `--rows`, `--cols`, `--text`, `--text-file`, `--after-anchor`, `--reference-table`, `--border-fill-id`, `--header-border-fill-id`, `--report`를 지원한다. Anchor 삽입은 top-level 문단으로 제한하고, border fill ID는 `Contents/header.xml` 정의에 존재할 때만 허용한다.
+- 실제 제출서식 smoke에서 top-level 표 44 -> 45, 전체 layout validator 표 48 -> 49, changed core tables 0, leading paragraph style drift 0, content require 통과를 확인했다.
+- 병합/중첩 표만 있는 `table-authoring.hwpx` fixture에서는 안전한 reference table이 없어서 실패하도록 막았다. 다음 단위는 reference 없이 minimal table을 생성하거나, row/column 조작을 기존 reference 기반으로 확장하는 작업이다.
+
 개발 단위:
 
 1. table create package writer

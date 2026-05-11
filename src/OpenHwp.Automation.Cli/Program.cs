@@ -118,6 +118,8 @@ namespace OpenHwp.Automation.Cli
                     return MarkdownSubmissionText(commandArgs);
                 case "markdown-table-list":
                     return MarkdownTableList(commandArgs);
+                case "table-create-package":
+                    return TableCreatePackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -864,6 +866,136 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("row_move_count=" + rowMoveCount);
             Console.WriteLine("column_move_count=" + columnMoveCount);
             return 0;
+        }
+
+        private static int TableCreatePackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            var options = new TableCreateOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0"
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--rows", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Rows = ParseIntArgument(RequireValue(args, ref index, "--rows"), "rows");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--cols", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Columns = ParseIntArgument(RequireValue(args, ref index, "--cols"), "cols");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = RequireValue(args, ref index, "--text");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = ReadTextFile(RequireValue(args, ref index, "--text-file"));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--after-anchor", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.AnchorText = RequireValue(args, ref index, "--after-anchor");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--reference-table", StringComparison.OrdinalIgnoreCase))
+                {
+                    var referenceTableIndex = ParseIntArgument(RequireValue(args, ref index, "--reference-table"), "reference-table");
+                    if (referenceTableIndex < 0)
+                    {
+                        Console.Error.WriteLine("--reference-table must be zero or greater.");
+                        return 1;
+                    }
+
+                    options.ReferenceTableIndex = referenceTableIndex;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--border-fill-id", StringComparison.OrdinalIgnoreCase))
+                {
+                    var borderFillId = ParseIntArgument(RequireValue(args, ref index, "--border-fill-id"), "border-fill-id");
+                    if (borderFillId < 0)
+                    {
+                        Console.Error.WriteLine("--border-fill-id must be zero or greater.");
+                        return 1;
+                    }
+
+                    options.BorderFillId = borderFillId;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--header-border-fill-id", StringComparison.OrdinalIgnoreCase))
+                {
+                    var headerBorderFillId = ParseIntArgument(RequireValue(args, ref index, "--header-border-fill-id"), "header-border-fill-id");
+                    if (headerBorderFillId < 0)
+                    {
+                        Console.Error.WriteLine("--header-border-fill-id must be zero or greater.");
+                        return 1;
+                    }
+
+                    options.HeaderBorderFillId = headerBorderFillId;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.Rows <= 0 || options.Columns <= 0)
+            {
+                Console.Error.WriteLine("--rows and --cols are required and must be greater than zero.");
+                return 1;
+            }
+
+            var result = HwpxTableCreator.Create(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("rows=" + result.Rows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("columns=" + result.Columns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_top_level_table_count=" + result.OriginalTableCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_top_level_table_count=" + result.NewTableCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("reference_table_index=" + (result.ReferenceTableIndex.HasValue ? result.ReferenceTableIndex.Value.ToString(CultureInfo.InvariantCulture) : string.Empty));
+            Console.WriteLine("usable_reference_candidates=" + result.UsableReferenceCandidateCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_text_cells=" + result.MissingTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("ignored_text_cells=" + result.IgnoredTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("inserted_at=" + result.InsertedAt);
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
         }
 
         private static int FillMarkdownTable(string[] args, bool visible, bool keepOpen)
@@ -3158,6 +3290,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
             Console.WriteLine("  markdown-submission-text <markdownPath> [outputPath]");
             Console.WriteLine("  markdown-table-list <markdownPath>");
+            Console.WriteLine("  table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");

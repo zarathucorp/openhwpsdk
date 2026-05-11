@@ -155,8 +155,11 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-table
 Fill an existing HWPX table without recreating it:
 
 ```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-create-package "<template.hwpx>" "test\out\new_table.hwpx" --rows 2 --cols 3 --text "Header A|Header B|Header C;Value 1|Value 2|Value 3" --report "test\out\new_table_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "test\out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
 ```
+
+`table-create-package` is the COM-free path for creating a new simple table. It needs an existing unmerged top-level table in the source HWPX so it can clone stable table, cell, paragraph, and border defaults; it fails instead of guessing when no safe reference table exists. `--after-anchor` only targets top-level body paragraphs, and text input reports ignored or missing cells when the source matrix does not match `--rows` x `--cols`. Validate with content requirements for inserted text and `validate-layout` to confirm the expected table count increase does not disturb existing tables.
 
 Copy a whole table or control from a reference HWP/HWPX document through HWP's editor-backed clipboard path:
 
