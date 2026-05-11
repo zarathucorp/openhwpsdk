@@ -98,7 +98,7 @@ function Write-HwpxFixture {
 $headerFooterBody = New-ParagraphXml (
     "<hp:header><hp:subList><hp:p><hp:run><hp:t>Header fixture</hp:t></hp:run></hp:p></hp:subList></hp:header>" +
     "<hp:footer><hp:subList><hp:p><hp:run><hp:t>Footer fixture</hp:t></hp:run></hp:p></hp:subList></hp:footer>" +
-    "<hp:header idRef=`"header-ref`"/><hp:footer idRef=`"footer-ref`"/>"
+    "<hp:header idRef=`"header-ref`" applyPageType=`"BOTH`"/><hp:footer idRef=`"footer-ref`" applyPageType=`"EVEN`"/>"
 )
 Write-HwpxFixture "header-footer.hwpx" (New-SectionXml $headerFooterBody)
 

@@ -128,6 +128,13 @@
 
 우선순위: P0/P1
 
+구현 상태(2026-05-11):
+
+- `list-header-footer` 명령으로 HWPX 파일/디렉터리의 section-aware header/footer inventory를 별도 출력한다.
+- report는 section, part, kind, body/reference role, `applyPageType`, reference attrs, paragraph/table/picture/shape count, text preview를 포함한다.
+- `scan-hwpx-features`의 Header/Footer Inventory 표도 동일하게 section/applyPageType 컬럼을 포함하도록 확장했다.
+- 이 단계는 읽기/inventory 지원이며, header/footer 쓰기는 다음 개발 단위다.
+
 ### Phase 2. 누름틀/필드/양식 개체
 
 목표: 제안서/공문/계약서 템플릿에서 가장 흔한 "빈칸 채우기"를 named field 기반으로 안정화한다.

@@ -274,18 +274,22 @@ namespace OpenHwp.Automation.Cli
             builder.AppendLine();
             builder.AppendLine("## Header/Footer Inventory");
             builder.AppendLine();
-            builder.AppendLine("| file | part | kind | role | ref | paragraphs | tables | pictures | shapes | text |");
-            builder.AppendLine("| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |");
+            builder.AppendLine("| file | section | part | kind | role | applyPageType | ref | paragraphs | tables | pictures | shapes | text |");
+            builder.AppendLine("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |");
             foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal))
             {
                 builder.Append("| ");
                 builder.Append(EscapeMarkdown(Path.GetFileName(row.File.Path)));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Section));
                 builder.Append(" | ");
                 builder.Append(EscapeMarkdown(row.Detail.PartPath));
                 builder.Append(" | ");
                 builder.Append(EscapeMarkdown(row.Detail.Kind));
                 builder.Append(" | ");
                 builder.Append(EscapeMarkdown(row.Detail.Role));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.ApplyPageType));
                 builder.Append(" | ");
                 builder.Append(EscapeMarkdown(row.Detail.Reference));
                 builder.Append(" | ");
@@ -762,8 +766,10 @@ namespace OpenHwp.Automation.Cli
         {
             return new HeaderFooterDetail(
                 NormalizePackagePath(path),
+                ExtractSectionName(path),
                 kind,
                 role,
+                ExtractHeaderFooterApplyPageType(element),
                 element.Descendants(Hp + "p").Count(),
                 element.Descendants(Hp + "tbl").Count(),
                 element.Descendants(Hp + "pic").Count(),
@@ -772,9 +778,26 @@ namespace OpenHwp.Automation.Cli
                 string.Join(" ", element.Descendants(Hp + "t").Select(item => item.Value).Where(item => !string.IsNullOrWhiteSpace(item)).ToArray()));
         }
 
+        private static string ExtractSectionName(string path)
+        {
+            var normalized = NormalizePackagePath(path);
+            if (!IsSectionPart(normalized))
+            {
+                return string.Empty;
+            }
+
+            return Path.GetFileNameWithoutExtension(normalized);
+        }
+
+        private static string ExtractHeaderFooterApplyPageType(XElement element)
+        {
+            var attribute = element == null ? null : element.Attribute("applyPageType");
+            return attribute == null ? string.Empty : attribute.Value ?? string.Empty;
+        }
+
         private static string ExtractHeaderFooterReference(XElement element)
         {
-            return ExtractKnownAttributes(element, new[] { "idRef", "id", "name", "applyPageType", "textFlow" });
+            return ExtractKnownAttributes(element, new[] { "idRef", "id", "name", "textFlow" });
         }
 
         private static string ExtractKnownAttributes(XElement element, IEnumerable<string> names)
@@ -1061,11 +1084,13 @@ namespace OpenHwp.Automation.Cli
 
         internal sealed class HeaderFooterDetail
         {
-            public HeaderFooterDetail(string partPath, string kind, string role, int paragraphs, int tables, int pictures, int shapes, string reference, string text)
+            public HeaderFooterDetail(string partPath, string section, string kind, string role, string applyPageType, int paragraphs, int tables, int pictures, int shapes, string reference, string text)
             {
                 PartPath = partPath;
+                Section = section ?? string.Empty;
                 Kind = kind;
                 Role = role;
+                ApplyPageType = applyPageType ?? string.Empty;
                 Paragraphs = paragraphs;
                 Tables = tables;
                 Pictures = pictures;
@@ -1076,9 +1101,13 @@ namespace OpenHwp.Automation.Cli
 
             public string PartPath { get; private set; }
 
+            public string Section { get; private set; }
+
             public string Kind { get; private set; }
 
             public string Role { get; private set; }
+
+            public string ApplyPageType { get; private set; }
 
             public int Paragraphs { get; private set; }
 

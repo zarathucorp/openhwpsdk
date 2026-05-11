@@ -181,6 +181,7 @@ Scan HWPX feature coverage:
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test" "test\out\hwpx_feature_scan.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer "test\corpus\features\header-footer.hwpx" "test\out\header_footer_inventory.md"
 ```
 
 Regenerate and scan the tracked authoring feature corpus:
@@ -197,7 +198,7 @@ The feature scan report separates corpus evidence from implementation support. I
 - bookmarks, captions, hyperlinks, cross references, TOC/index markers, page/auto numbers
 - footnotes, endnotes, memos, and comments
 
-Use `Missing Corpus Signals` to decide which fixture is absent. Do not treat a nonzero count as write support; the scan proves only that the HWPX package contains the feature.
+Use `Missing Corpus Signals` to decide which fixture is absent. Use `list-header-footer` for a focused section-aware header/footer inventory when placement, body/reference split, `applyPageType`, or text/table/picture/shape counts matter. Do not treat a nonzero count as write support; the scan proves only that the HWPX package contains the feature.
 
 Export PDFs for visual inspection:
 

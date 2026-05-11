@@ -86,6 +86,7 @@ Use `scan-hwpx-features` when the question is what HWPX authoring features are p
 
 ```powershell
 & $cli scan-hwpx-features 'test' 'test\out\hwpx_feature_scan.md'
+& $cli list-header-footer 'test\corpus\features\header-footer.hwpx' 'test\out\header_footer_inventory.md'
 ```
 
 Regenerate the tracked feature corpus before relying on fixture coverage:
@@ -95,7 +96,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixture
 & $cli scan-hwpx-features 'test\corpus\features' 'test\out\hwpx_feature_scan_features.md'
 ```
 
-The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Counts are inventory signals only; they do not mean the feature can be written or edited yet.
+The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Counts are inventory signals only; they do not mean the feature can be written or edited yet.
 
 ## Windows Rules
 

@@ -134,6 +134,8 @@ namespace OpenHwp.Automation.Cli
                     return ValidateContent(commandArgs);
                 case "scan-hwpx-features":
                     return ScanHwpxFeatures(commandArgs);
+                case "list-header-footer":
+                    return ListHeaderFooter(commandArgs);
                 case "list-controls":
                     return ListControls(commandArgs, visible, keepOpen);
                 case "probe-copy-from-doc":
@@ -1361,6 +1363,46 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int ListHeaderFooter(string[] args)
+        {
+            if (args.Length < 2 || args.Length > 3)
+            {
+                Console.Error.WriteLine("Usage: list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
+                return 1;
+            }
+
+            var summary = HwpxFeatureScanner.Scan(args[1]);
+            var itemCount = summary.Files.Sum(file => file.HeaderFooterItems.Count);
+            var sectionCount = summary.Files
+                .SelectMany(file => file.HeaderFooterItems.Select(detail => new { FilePath = file.Path, detail.Section }))
+                .Where(item => !string.IsNullOrWhiteSpace(item.Section))
+                .Select(item => (item.FilePath ?? string.Empty) + "\u001f" + item.Section)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+            if (args.Length == 3)
+            {
+                WriteHeaderFooterReport(summary, args[2]);
+            }
+
+            Console.WriteLine("input=" + summary.InputPath);
+            Console.WriteLine("files=" + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_errors=" + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("xml_parse_errors=" + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("header_footer_items=" + itemCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("sections=" + sectionCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("header_bodies=" + summary.Count("pageHeaders").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("footer_bodies=" + summary.Count("pageFooters").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("header_references=" + summary.Count("pageHeaderReferences").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("footer_references=" + summary.Count("pageFooterReferences").ToString(CultureInfo.InvariantCulture));
+            if (args.Length == 3)
+            {
+                Console.WriteLine(args[2]);
+            }
+
+            return 0;
+        }
+
         private static int ListControls(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 2 || args.Length > 3)
@@ -2097,6 +2139,104 @@ namespace OpenHwp.Automation.Cli
             return value.Substring(0, maxLength - 3) + "...";
         }
 
+        private static void WriteHeaderFooterReport(HwpxFeatureScanner.ScanSummary summary, string reportPath)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.HeaderFooterItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            var report = new StringBuilder();
+            report.AppendLine("# HWPX Header/Footer Inventory");
+            report.AppendLine();
+            report.AppendLine("- input: `" + summary.InputPath + "`");
+            report.AppendLine("- files: " + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- package errors: " + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- XML parse errors: " + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- items: " + rows.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine();
+            report.AppendLine("## Summary");
+            report.AppendLine();
+            report.AppendLine("| kind | body | reference |");
+            report.AppendLine("| --- | ---: | ---: |");
+            report.AppendLine("| header | " + summary.Count("pageHeaders").ToString(CultureInfo.InvariantCulture) + " | " + summary.Count("pageHeaderReferences").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| footer | " + summary.Count("pageFooters").ToString(CultureInfo.InvariantCulture) + " | " + summary.Count("pageFooterReferences").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine();
+
+            var bySection = rows
+                .GroupBy(row => (row.File.Path ?? string.Empty) + "\u001f" + (string.IsNullOrWhiteSpace(row.Detail.Section) ? "(package part)" : row.Detail.Section), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.First().File.Path, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(group => string.IsNullOrWhiteSpace(group.First().Detail.Section) ? "(package part)" : group.First().Detail.Section, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (bySection.Count > 0)
+            {
+                report.AppendLine("## Sections");
+                report.AppendLine();
+                report.AppendLine("| file | section | headers | footers | references | bodies |");
+                report.AppendLine("| --- | --- | ---: | ---: | ---: | ---: |");
+                foreach (var group in bySection)
+                {
+                    var first = group.First();
+                    var section = string.IsNullOrWhiteSpace(first.Detail.Section) ? "(package part)" : first.Detail.Section;
+                    report.Append("| ");
+                    report.Append(EscapeMarkdownTable(Path.GetFileName(first.File.Path)));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(section));
+                    report.Append(" | ");
+                    report.Append(group.Count(row => string.Equals(row.Detail.Kind, "header", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(group.Count(row => string.Equals(row.Detail.Kind, "footer", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(group.Count(row => string.Equals(row.Detail.Role, "reference", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(group.Count(row => string.Equals(row.Detail.Role, "body", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture));
+                    report.AppendLine(" |");
+                }
+
+                report.AppendLine();
+            }
+
+            report.AppendLine("## Items");
+            report.AppendLine();
+            if (rows.Count == 0)
+            {
+                report.AppendLine("- No header/footer items detected.");
+            }
+            else
+            {
+                report.AppendLine("| file | section | part | kind | role | applyPageType | ref | paragraphs | tables | pictures | shapes | text |");
+                report.AppendLine("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |");
+                foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal).ThenBy(item => item.Detail.Role, StringComparer.Ordinal))
+                {
+                    report.Append("| ");
+                    report.Append(EscapeMarkdownTable(Path.GetFileName(row.File.Path)));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Section));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.PartPath));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Kind));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Role));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.ApplyPageType));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Reference));
+                    report.Append(" | ");
+                    report.Append(row.Detail.Paragraphs.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(row.Detail.Tables.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(row.Detail.Pictures.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(row.Detail.Shapes.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(Abbreviate(row.Detail.Text, 100)));
+                    report.AppendLine(" |");
+                }
+            }
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
         private static void WriteControlsReport(string inputPath, IList<HwpControlInfo> controls, string reportPath)
         {
             var report = new StringBuilder();
@@ -2553,6 +2693,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
