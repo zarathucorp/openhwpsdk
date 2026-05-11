@@ -202,6 +202,8 @@
 - 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀 borderFillIDRef를 16 -> 32로 바꾸고 layout pass와 직접 XML 검증을 확인했다. 존재하지 않는 borderFill ID 9999는 적용 전에 실패한다.
 - `table-cell-align-package` 명령으로 셀 내부 문단의 가로 정렬과 셀 세로 정렬을 변경한다. 가로 정렬은 공유 `paraPr`를 직접 수정하지 않고 `Contents/header.xml`에서 clone을 만들어 해당 셀 문단만 새 `paraPrIDRef`를 보게 하며, 세로 정렬은 `hp:subList@vertAlign`을 변경한다.
 - 실제 제출서식 smoke에서 row 1/column 1 셀을 `horizontal=RIGHT`, `vertical=BOTTOM`으로 변경했고, 직접 XML에서 새 `paraPrIDRef=203`, header align RIGHT, `paraProperties itemCnt=204`, subList vertAlign BOTTOM을 확인했다. 병합셀 covered coordinate 선택도 top-left 병합셀 정렬로 적용된다.
+- `table-cell-background-package` 명령으로 셀 배경색을 직접 설정하거나 지운다. 선택 셀의 현재 `borderFill`을 clone하고 `hc:fillBrush/hc:winBrush@faceColor`만 갱신하거나 `--color none`일 때 fillBrush를 제거한 뒤 해당 셀만 새 ID로 retarget한다.
+- 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀에 `#FFF2CC` 배경색을 적용했고, layout pass와 직접 XML 기준 `faceColor=#FFF2CC`, 기존 leftBorder 유지, cloned borderFill ID 적용을 확인했다. 병합셀 covered coordinate 선택도 top-left 병합셀 배경으로 적용된다.
 - `table-cell-diagonal-package` 명령으로 셀 대각선을 추가/변경/삭제한다. 기존 `borderFill`을 직접 바꾸지 않고 선택 셀의 현재 `borderFill`을 clone한 뒤 `hh:slash`/`hh:backSlash`와 `hh:diagonal` 폭/색상만 갱신하고 해당 셀만 새 ID로 retarget한다.
 - 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀에 `direction=both`, `width=0.15 mm`, `color=#000000`을 적용했고, layout pass와 직접 XML 기준 `slash=CENTER`, `backSlash=CENTER`, cloned borderFill ID 적용을 확인했다. 병합셀 covered coordinate 선택은 top-left 병합셀의 대각선으로 적용된다.
 - `table-cell-size-package` 명령으로 단순 unmerged top-level 표의 열 너비와 행 높이를 균등화한다. 전체 표 폭/높이는 유지하고 기존 `hp:cellSz` 값을 열/행 단위로 재분배하며, 병합/중첩/sparse/주소 불일치 표는 거부한다.
@@ -225,7 +227,7 @@
    - overlap validator 강화.
 
 4. table style operations
-   - border/background. (partially implemented: `table-cell-style-package` existing borderFill apply)
+   - border/background. (partially implemented: `table-cell-style-package` existing borderFill apply, `table-cell-background-package` direct fill color)
    - diagonal line. (implemented: `table-cell-diagonal-package`)
    - paragraph alignment, vertical alignment. (implemented: `table-cell-align-package`)
 
