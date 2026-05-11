@@ -171,7 +171,7 @@ Copy through HWP's editor-backed clipboard path:
 & $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
 ```
 
-Supported source selectors are `table:<index>` and `control:<ctrlId>:<index>`. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Source text ranges and image-specific selectors are not implemented yet. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
+Supported source selectors are `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` starts at the paragraph containing the text. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Image-specific selectors are not implemented yet. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
 
 ## Acceptance Checklist
 

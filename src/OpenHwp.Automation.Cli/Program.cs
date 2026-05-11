@@ -1396,7 +1396,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -1486,7 +1486,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 4)
             {
-                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -2146,6 +2146,34 @@ namespace OpenHwp.Automation.Cli
                 return moved;
             }
 
+            if (location.Kind == "all")
+            {
+                if (target)
+                {
+                    note = "all selector is source-only";
+                    return false;
+                }
+
+                var selected = hwp.SelectAll();
+                note = selected ? "selected entire source document" : "SelectAll failed";
+                return selected;
+            }
+
+            if (location.Kind == "paragraph-to-end")
+            {
+                if (target)
+                {
+                    note = "paragraph-to-end selector is source-only";
+                    return false;
+                }
+
+                var selected = hwp.SelectParagraphFromTextAnchorToDocumentEnd(location.Text, location.Index);
+                note = selected
+                    ? "selected from paragraph containing anchor occurrence " + location.Index.ToString(CultureInfo.InvariantCulture) + " to document end"
+                    : "paragraph-to-end source anchor was not found";
+                return selected;
+            }
+
             if (location.Kind == "table")
             {
                 var selected = hwp.SelectTableControl(location.Index);
@@ -2335,6 +2363,37 @@ namespace OpenHwp.Automation.Cli
                     return true;
                 }
 
+                if (!target && string.Equals(trimmed, "all", StringComparison.OrdinalIgnoreCase))
+                {
+                    location = new CopyLocation { Raw = trimmed, Kind = "all" };
+                    return true;
+                }
+
+                if (target && string.Equals(trimmed, "all", StringComparison.OrdinalIgnoreCase))
+                {
+                    reason = "all selector is source-only.";
+                    return false;
+                }
+
+                if (trimmed.StartsWith("paragraph-to-end:", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (target)
+                    {
+                        reason = "paragraph-to-end selector is source-only.";
+                        return false;
+                    }
+
+                    var text = trimmed.Substring("paragraph-to-end:".Length);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        reason = "paragraph-to-end selector requires text.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "paragraph-to-end", Text = text, Index = 0 };
+                    return true;
+                }
+
                 if (trimmed.StartsWith("table:", StringComparison.OrdinalIgnoreCase))
                 {
                     if (target)
@@ -2389,7 +2448,7 @@ namespace OpenHwp.Automation.Cli
                 {
                     if (!target)
                     {
-                        reason = "anchor selector is target-only until text range copy is implemented.";
+                        reason = "anchor selector is target-only; use paragraph-to-end:<text> for source paragraph blocks.";
                         return false;
                     }
 
@@ -2467,8 +2526,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");

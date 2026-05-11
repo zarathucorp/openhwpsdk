@@ -78,7 +78,7 @@ For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe f
 & $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
 ```
 
-`copy-from-doc` currently supports whole-table and generic-control sources only: `table:<index>` and `control:<ctrlId>:<index>`. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Text-range and image-specific copy are future work; inspect real files with `list-controls` before claiming support.
+`copy-from-doc` currently supports whole-document, paragraph-to-end text block, whole-table, and generic-control sources: `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` starts at the paragraph containing the text. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Image-specific copy is future work; inspect real files with `list-controls` before claiming support.
 
 ## Feature Coverage
 

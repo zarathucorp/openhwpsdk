@@ -163,7 +163,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible prob
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "test\out\copy_from_doc.hwpx" --source table:0 --target doc-end --report "test\out\copy_from_doc.md"
 ```
 
-Use `probe-copy-from-doc` before mutation. Source selectors are intentionally limited to `table:<index>` and `control:<ctrlId>:<index>` until text-range selection is implemented. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
+Use `probe-copy-from-doc` before mutation. Source selectors support `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` selects from the paragraph containing the text through the document end. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
 
 Run structural layout validation:
 

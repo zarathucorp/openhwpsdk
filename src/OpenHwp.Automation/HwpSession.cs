@@ -969,6 +969,39 @@ namespace OpenHwp.Automation
             return TryRunCommand("Copy");
         }
 
+        public bool SelectAll()
+        {
+            EnsureDocument();
+            return TryRunCommand("MoveDocBegin") && TryRunCommand("SelectAll");
+        }
+
+        public bool SelectParagraphFromTextAnchorToDocumentEnd(string anchorText, int occurrenceIndex = 0)
+        {
+            if (string.IsNullOrWhiteSpace(anchorText))
+            {
+                throw new ArgumentException("Anchor text is required.", nameof(anchorText));
+            }
+
+            if (occurrenceIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(occurrenceIndex));
+            }
+
+            return WithEditMode(
+                1,
+                () =>
+                {
+                    if (!TryFindOccurrence(anchorText, occurrenceIndex))
+                    {
+                        return false;
+                    }
+
+                    TryRunCommand("MoveParaBegin");
+
+                    return TryRunCommand("Select") && TryRunCommand("MoveSelDocEnd");
+                });
+        }
+
         public bool PasteClipboard()
         {
             return TryRunCommand("Paste");

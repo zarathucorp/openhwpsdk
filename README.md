@@ -153,7 +153,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible prob
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc C:\temp\reference.hwpx C:\temp\target.hwpx C:\temp\copied.hwpx --source table:0 --target doc-end --report C:\temp\copy-report.md
 ```
 
-`copy-from-doc` currently supports rich source selection for whole tables and generic controls (`table:<index>` or `control:<ctrlId>:<index>`). Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing, so be careful with merged or irregular tables. Source text ranges and image-specific selectors are not implemented yet; use `list-controls` first to inspect how HWP exposes pictures or other objects in real documents.
+`copy-from-doc` currently supports rich source selection for the whole document, paragraph-to-end text blocks, whole tables, and generic controls (`all`, `paragraph-to-end:<text>`, `table:<index>`, or `control:<ctrlId>:<index>`). `paragraph-to-end:<text>` selects from the paragraph containing the text through the document end, so use a heading or paragraph-leading marker when you need a clean block. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing, so be careful with merged or irregular tables. Image-specific selectors are not implemented yet; use `list-controls` first to inspect how HWP exposes pictures or other objects in real documents.
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-list
