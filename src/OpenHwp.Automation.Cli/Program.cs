@@ -120,6 +120,8 @@ namespace OpenHwp.Automation.Cli
                     return MarkdownTableList(commandArgs);
                 case "table-create-package":
                     return TableCreatePackage(commandArgs);
+                case "table-row-package":
+                    return TableRowPackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -989,6 +991,127 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("ignored_text_cells=" + result.IgnoredTextCells.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("inserted_at=" + result.InsertedAt);
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
+        private static int TableRowPackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("  For add, --row means insert after that zero-based row; omit it to append after the last row. For delete, --row is the zero-based first row to delete.");
+                return 1;
+            }
+
+            var options = new TableRowOperationOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0",
+                TableIndex = -1,
+                Count = 1
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--table-index", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.TableIndex = ParseIntArgument(RequireValue(args, ref index, "--table-index"), "table-index");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--action", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Action = RequireValue(args, ref index, "--action");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--row", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.RowIndex = ParseIntArgument(RequireValue(args, ref index, "--row"), "row");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--count", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Count = ParseIntArgument(RequireValue(args, ref index, "--count"), "count");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = RequireValue(args, ref index, "--text");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = ReadTextFile(RequireValue(args, ref index, "--text-file"));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.TableIndex < 0)
+            {
+                Console.Error.WriteLine("--table-index is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Count <= 0)
+            {
+                Console.Error.WriteLine("--count must be greater than zero.");
+                return 1;
+            }
+
+            var action = (options.Action ?? string.Empty).Trim().ToLowerInvariant();
+            if (action != "add" && action != "delete")
+            {
+                Console.Error.WriteLine("--action must be add or delete.");
+                return 1;
+            }
+
+            if (action == "delete" && !options.RowIndex.HasValue)
+            {
+                Console.Error.WriteLine("--row is required when --action delete.");
+                return 1;
+            }
+
+            var result = HwpxTableRowEditor.Apply(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("action=" + result.Action);
+            Console.WriteLine("table_index=" + result.TableIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("effective_row=" + (result.EffectiveRow.HasValue ? result.EffectiveRow.Value.ToString(CultureInfo.InvariantCulture) : string.Empty));
+            Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("added_rows=" + result.AddedRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("deleted_rows=" + result.DeletedRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_text_cells=" + result.MissingTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("ignored_text_cells=" + result.IgnoredTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("note=" + result.Note);
             if (!string.IsNullOrWhiteSpace(options.ReportPath))
             {
@@ -3291,6 +3414,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-submission-text <markdownPath> [outputPath]");
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("    For add, --row inserts after that zero-based row; for delete, --row is the first zero-based row to delete.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");

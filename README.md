@@ -146,11 +146,13 @@ Markdown table values can be inserted into existing HWPX table cells without rec
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-table-list C:\temp\input.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-create-package C:\temp\template.hwpx C:\temp\new-table.hwpx --rows 2 --cols 3 --text "Header A|Header B|Header C;Value 1|Value 2|Value 3" --report C:\temp\new-table-report.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-row-package C:\temp\template.hwpx C:\temp\row-added.hwpx --table-index 4 --action add --row 1 --count 2 --text "R1C1|R1C2|R1C3|R1C4;R2C1|R2C2|R2C3|R2C4" --report C:\temp\row-added-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table C:\temp\template.hwpx C:\temp\input.md C:\temp\table-out.hwpx 8 3 1 0 1 2 5
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible table-cell-set C:\temp\template.hwpx C:\temp\cell-out.hwpx 3 1 1 "cell text"
 ```
 
 Use `table-create-package` when a new simple table is needed without HWP COM. It clones the style of an existing unmerged top-level table, creates a `rows x cols` grid, inserts it at the document end by default, and can insert after an existing top-level paragraph with `--after-anchor`. `--text` and `--text-file` use `;` or newline between rows and `|` between cells; ignored or missing cells are reported. Use `--reference-table` for a specific top-level table style and `--border-fill-id` / `--header-border-fill-id` only when those border fill IDs are known from the template.
+Use `table-row-package` for COM-free row add/delete on simple top-level text-cell tables. It rejects merged, nested, sparse, irregular-address, or object-containing tables, readdresses `cellAddr` values after mutation, and should be checked with `validate-layout --allow-table-row-change <index>` when row count changes are intentional. For add, `--row` means insert after that zero-based row; omit it to append after the last row. For delete, `--row` is the zero-based first row to delete.
 
 Use HWP COM-backed rich copy/paste when an existing reference document already has the table or control formatting you need:
 

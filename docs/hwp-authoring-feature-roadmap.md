@@ -190,6 +190,8 @@
 - 기존 HWPX 안의 병합/중첩 없는 top-level 표를 reference style로 복제하고, `--rows`, `--cols`, `--text`, `--text-file`, `--after-anchor`, `--reference-table`, `--border-fill-id`, `--header-border-fill-id`, `--report`를 지원한다. Anchor 삽입은 top-level 문단으로 제한하고, border fill ID는 `Contents/header.xml` 정의에 존재할 때만 허용한다.
 - 실제 제출서식 smoke에서 top-level 표 44 -> 45, 전체 layout validator 표 48 -> 49, changed core tables 0, leading paragraph style drift 0, content require 통과를 확인했다.
 - 병합/중첩 표만 있는 `table-authoring.hwpx` fixture에서는 안전한 reference table이 없어서 실패하도록 막았다. 다음 단위는 reference 없이 minimal table을 생성하거나, row/column 조작을 기존 reference 기반으로 확장하는 작업이다.
+- `table-row-package` 명령으로 단순 top-level 텍스트 셀 표의 행 추가/삭제를 지원한다. 병합/중첩/sparse/주소 불일치/객체 포함 표는 거부하고, 행 추가/삭제 후 `cellAddr`, `rowCnt`, `colCnt`, 표 크기를 재정규화한다.
+- 실제 제출서식 smoke에서 top-level table 4에 2행을 추가해 3 -> 5행, 1행을 삭제해 3 -> 2행으로 변경했고, `validate-layout --allow-table-row-change 4`에서 expected-change/pass를 확인했다.
 
 개발 단위:
 
