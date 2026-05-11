@@ -31,7 +31,7 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("mappingScope", "package"),
                 new XAttribute("generatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
 
-            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes, package-level image embedding, and package press-field writes. Non-press field/form targets are inventory-only until field/form writing is explicitly implemented. Use HWP automation when editor-backed behavior is required."));
+            root.Add(new XComment("Fill writeText, writeImage, or supported field writeValue elements, then run apply-form-map. Package mode supports text writes, package-level image embedding, package press-field writes, and package checkbox value writes. Radio/combo/edit/generic field targets are inventory-only until field/form writing is explicitly implemented. Use HWP automation when editor-backed behavior is required."));
             root.Add(BuildPackageElement(entries, xmlDocuments, writablePartNames));
 
             var tablesElement = new XElement("tables");
@@ -860,7 +860,9 @@ namespace OpenHwp.Automation.Cli
             int fieldOrderInPart)
         {
             var kind = NormalizeFieldKind(element.Name.LocalName);
-            var writeSupported = IsPackageWritableFieldKind(kind);
+            var textWriteSupported = IsPackageWritableFieldTextKind(kind);
+            var valueWriteSupported = IsPackageWritableFieldValueKind(kind);
+            var writeSupported = textWriteSupported || valueWriteSupported;
             var fieldElement = new XElement(
                 "field",
                 new XAttribute("id", "field-" + fieldIndex.ToString("0000", CultureInfo.InvariantCulture)),
@@ -881,8 +883,13 @@ namespace OpenHwp.Automation.Cli
                 new XElement("currentText", NormalizeText(TextOf(element))),
                 new XElement(
                     "writeText",
-                    new XAttribute("enabled", writeSupported ? "true" : "false"),
-                    new XAttribute("validateCurrentText", "true")));
+                    new XAttribute("enabled", textWriteSupported ? "true" : "false"),
+                    new XAttribute("validateCurrentText", "true")),
+                new XElement(
+                    "writeValue",
+                    new XAttribute("enabled", valueWriteSupported ? "true" : "false"),
+                    new XAttribute("validateCurrentValue", "true"),
+                    new XAttribute("allowed", valueWriteSupported ? "CHECKED|UNCHECKED" : string.Empty)));
 
             var attrs = ExtractKnownAttributes(element, new[] { "name", "caption", "id", "idRef", "type", "command", "fieldName", "value", "editable", "enabled", "printable", "tabOrder", "radioGroupName", "groupName" });
             if (!string.IsNullOrWhiteSpace(attrs))
@@ -954,9 +961,14 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static bool IsPackageWritableFieldKind(string kind)
+        private static bool IsPackageWritableFieldTextKind(string kind)
         {
             return string.Equals(kind, "press", StringComparison.Ordinal);
+        }
+
+        private static bool IsPackageWritableFieldValueKind(string kind)
+        {
+            return string.Equals(kind, "checkBox", StringComparison.Ordinal);
         }
 
         private static string ExtractKnownAttributes(XElement element, IEnumerable<string> names)
@@ -1197,7 +1209,7 @@ namespace OpenHwp.Automation.Cli
 
         private static void ApplyFieldWritesUnsupported(XElement field, ApplyResult result, int maxOperations, string note)
         {
-            if (!HasFieldTextWrite(field))
+            if (!HasFieldTextWrite(field) && !HasFieldValueWrite(field))
             {
                 return;
             }
@@ -1425,7 +1437,7 @@ namespace OpenHwp.Automation.Cli
             var writeSupported = GetBool(field, "writeSupported", false);
             if (!writeSupported)
             {
-                if (HasFieldTextWrite(field))
+                if (HasFieldTextWrite(field) || HasFieldValueWrite(field))
                 {
                     if (!BeginOperation(result, maxOperations))
                     {
@@ -1440,37 +1452,85 @@ namespace OpenHwp.Automation.Cli
                 return;
             }
 
-            var writeText = field.Element("writeText");
-            if (writeText == null || !GetBool(writeText, "enabled", false))
+            if (HasFieldTextWrite(field))
+            {
+                if (!IsPackageWritableFieldTextKind(kind))
+                {
+                    if (!BeginOperation(result, maxOperations))
+                    {
+                        return;
+                    }
+
+                    result.SkippedUnsafe++;
+                    Console.WriteLine("skip unsupported package field text write: id={0}", id);
+                    RecordApplyOperation(result, "field", id, target, "SKIPPED", "field text writing unsupported for kind=" + kind);
+                }
+                else
+                {
+                    var writeText = field.Element("writeText");
+                    var shouldClear = GetBool(writeText, "clear", false);
+                    var text = writeText.Value ?? string.Empty;
+                    if (shouldClear || text.Length > 0)
+                    {
+                        if (!BeginOperation(result, maxOperations))
+                        {
+                            return;
+                        }
+
+                        string reason;
+                        int repairedRuns;
+                        if (TryApplyPackageFieldText(xmlDocuments, touchedParts, field, text, textStyleGuard, out reason, out repairedRuns))
+                        {
+                            result.Applied++;
+                            Console.WriteLine("package set field: id={0}, text={1}", id, Abbreviate(text, 80));
+                            RecordApplyOperation(result, "field", id, target, "APPLIED", repairedRuns > 0 ? "package press field; normalized small charPr runs=" + repairedRuns.ToString(CultureInfo.InvariantCulture) : "package press field");
+                        }
+                        else
+                        {
+                            result.Failed++;
+                            Console.WriteLine("package set field failed: id={0}, reason={1}", id, reason);
+                            RecordApplyOperation(result, "field", id, target, "FAILED", reason);
+                        }
+                    }
+                }
+            }
+
+            if (!HasFieldValueWrite(field))
             {
                 return;
             }
 
-            var shouldClear = GetBool(writeText, "clear", false);
-            var text = writeText.Value ?? string.Empty;
-            if (!shouldClear && text.Length == 0)
+            if (!IsPackageWritableFieldValueKind(kind))
             {
+                if (!BeginOperation(result, maxOperations))
+                {
+                    return;
+                }
+
+                result.SkippedUnsafe++;
+                Console.WriteLine("skip unsupported package field value write: id={0}", id);
+                RecordApplyOperation(result, "field", id, target, "SKIPPED", "field value writing unsupported for kind=" + kind);
                 return;
             }
 
+            var writeValue = field.Element("writeValue");
             if (!BeginOperation(result, maxOperations))
             {
                 return;
             }
 
-            string reason;
-            int repairedRuns;
-            if (TryApplyPackageFieldText(xmlDocuments, touchedParts, field, text, textStyleGuard, out reason, out repairedRuns))
+            string valueReason;
+            if (TryApplyPackageFieldValue(xmlDocuments, touchedParts, field, writeValue.Value, out valueReason))
             {
                 result.Applied++;
-                Console.WriteLine("package set field: id={0}, text={1}", id, Abbreviate(text, 80));
-                RecordApplyOperation(result, "field", id, target, "APPLIED", repairedRuns > 0 ? "package press field; normalized small charPr runs=" + repairedRuns.ToString(CultureInfo.InvariantCulture) : "package press field");
+                Console.WriteLine("package set field value: id={0}, value={1}", id, Abbreviate(writeValue.Value, 80));
+                RecordApplyOperation(result, "field", id, target, "APPLIED", "package checkbox value");
             }
             else
             {
                 result.Failed++;
-                Console.WriteLine("package set field failed: id={0}, reason={1}", id, reason);
-                RecordApplyOperation(result, "field", id, target, "FAILED", reason);
+                Console.WriteLine("package set field value failed: id={0}, reason={1}", id, valueReason);
+                RecordApplyOperation(result, "field", id, target, "FAILED", valueReason);
             }
         }
 
@@ -1570,7 +1630,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
-            if (!IsPackageWritableFieldKind(NormalizeFieldKind(targetField.Name.LocalName)))
+            if (!IsPackageWritableFieldTextKind(NormalizeFieldKind(targetField.Name.LocalName)))
             {
                 reason = "package field writer only supports press fields";
                 return false;
@@ -1582,6 +1642,53 @@ namespace OpenHwp.Automation.Cli
             }
 
             touchedParts.Add(partPath);
+            return true;
+        }
+
+        private static bool TryApplyPackageFieldValue(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapField, string value, out string reason)
+        {
+            var partPath = ResolveMapPartPath(mapField);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map field does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement targetField;
+            if (!TryResolvePackageField(document, mapField, out targetField, out reason))
+            {
+                return false;
+            }
+
+            if (!IsPackageWritableFieldValueKind(NormalizeFieldKind(targetField.Name.LocalName)))
+            {
+                reason = "package field value writer only supports checkbox fields";
+                return false;
+            }
+
+            if (!MapFieldCurrentValueMatches(mapField, targetField))
+            {
+                reason = "field value mismatch: " + DescribeFieldValueMismatch(mapField, targetField);
+                return false;
+            }
+
+            string normalizedValue;
+            if (!TryNormalizeCheckboxValue(value, out normalizedValue))
+            {
+                reason = "checkbox value must be CHECKED or UNCHECKED";
+                return false;
+            }
+
+            targetField.SetAttributeValue("value", normalizedValue);
+            touchedParts.Add(partPath);
+            reason = string.Empty;
             return true;
         }
 
@@ -1919,6 +2026,23 @@ namespace OpenHwp.Automation.Cli
             return string.Equals(NormalizeText(TextOf(targetField)), expected, StringComparison.Ordinal);
         }
 
+        private static bool MapFieldCurrentValueMatches(XElement mapField, XElement targetField)
+        {
+            var writeValue = mapField.Element("writeValue");
+            if (writeValue != null && !GetBool(writeValue, "validateCurrentValue", true))
+            {
+                return true;
+            }
+
+            var expected = GetString(mapField, "value");
+            if (string.IsNullOrWhiteSpace(expected))
+            {
+                return true;
+            }
+
+            return string.Equals(GetString(targetField, "value"), expected, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string DescribeFieldTextMismatch(XElement mapField, XElement targetField)
         {
             var expected = NormalizeText(mapField.Element("currentText") == null ? string.Empty : mapField.Element("currentText").Value);
@@ -1928,6 +2052,15 @@ namespace OpenHwp.Automation.Cli
                 "expected='{0}', actual='{1}'",
                 Abbreviate(expected, 40),
                 Abbreviate(actual, 40));
+        }
+
+        private static string DescribeFieldValueMismatch(XElement mapField, XElement targetField)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "expected='{0}', actual='{1}'",
+                Abbreviate(GetString(mapField, "value"), 40),
+                Abbreviate(GetString(targetField, "value"), 40));
         }
 
         private static int CountMatchingParagraphs(IEnumerable<XElement> paragraphs, string text)
@@ -2042,7 +2175,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
-            if (!IsPackageWritableFieldKind(NormalizeFieldKind(field.Name.LocalName)))
+            if (!IsPackageWritableFieldTextKind(NormalizeFieldKind(field.Name.LocalName)))
             {
                 reason = "package field writer only supports press fields";
                 return false;
@@ -2126,6 +2259,25 @@ namespace OpenHwp.Automation.Cli
         private static string NormalizePackageWriteText(string text)
         {
             return (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
+        }
+
+        private static bool TryNormalizeCheckboxValue(string value, out string normalizedValue)
+        {
+            var raw = (value ?? string.Empty).Trim();
+            if (string.Equals(raw, "CHECKED", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedValue = "CHECKED";
+                return true;
+            }
+
+            if (string.Equals(raw, "UNCHECKED", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedValue = "UNCHECKED";
+                return true;
+            }
+
+            normalizedValue = string.Empty;
+            return false;
         }
 
         private static void ProbeCell(HwpSession hwp, XElement cell, ProbeResult result, StringBuilder report)
@@ -2321,6 +2473,14 @@ namespace OpenHwp.Automation.Cli
             return writeText != null &&
                    GetBool(writeText, "enabled", false) &&
                    (GetBool(writeText, "clear", false) || !string.IsNullOrEmpty(writeText.Value));
+        }
+
+        private static bool HasFieldValueWrite(XElement field)
+        {
+            var writeValue = field.Element("writeValue");
+            return writeValue != null &&
+                   GetBool(writeValue, "enabled", false) &&
+                   !string.IsNullOrWhiteSpace(writeValue.Value);
         }
 
         private static bool HasImageWrite(XElement cell)

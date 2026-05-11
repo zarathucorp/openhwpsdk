@@ -175,8 +175,10 @@
 - `press-field-form.hwpx` fixture에서 field/press/form 6개 package item을 확인했고, 실제 제출서식 smoke에서 checkbox 8개와 COM raw empty 결과를 같은 report에 남겼다.
 - `extract-form-map`은 이제 `field`/`press` marker와 `checkBtn`, checkbox, radio, combo, edit control 같은 form object를 별도 `fields` section에 출력한다.
 - `apply-form-map --package`는 `kind=press` field의 `writeText enabled="true"` 값을 package-level로 적용하며, `currentText` mismatch는 실패 처리한다.
-- smoke에서 `press-field-form.hwpx`의 `press-a`를 `Updated press field`로 치환했고, content/layout/list-fields 검증을 통과했다. mismatch map은 failed=1, unsupported checkbox write는 skipped_unsafe=1로 막았다.
-- 인쇄 여부, generic field writing, form object value writing은 다음 개발 단위다.
+- press-field 개발 단위 smoke에서 `press-field-form.hwpx`의 `press-a`를 `Updated press field`로 치환했고, content/layout/list-fields 검증을 통과했다. 당시 text 기반 unsupported checkbox write는 skipped_unsafe=1로 막았다.
+- `apply-form-map --package`는 `kind=checkBox` field의 `writeValue enabled="true"` 값을 `CHECKED`/`UNCHECKED`로 적용하며, `value` mismatch는 실패 처리한다.
+- 실제 제출서식 smoke에서 `CheckBox1`을 `UNCHECKED` -> `CHECKED`로 변경했고, layout/list-fields/package XML 검증을 통과했다. mismatch map은 failed=1, unsupported radio value write는 skipped_unsafe=1로 막았다.
+- 인쇄 여부, generic field writing, radio/combo/edit value writing은 다음 개발 단위다.
 
 ### Phase 3. 표 authoring 전 범위
 
