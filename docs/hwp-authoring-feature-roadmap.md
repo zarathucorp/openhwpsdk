@@ -168,6 +168,13 @@
 
 우선순위: P0/P1
 
+구현 상태(2026-05-11):
+
+- `list-fields` 명령으로 package-level field/form item과 선택적 COM `GetFieldList` 결과를 한 report에 병합한다.
+- package report는 part, kind, attrs(name/value 등), text preview를 출력한다. COM report는 raw list에서 파싱 가능한 field name, 존재 여부, 현재 text를 출력한다.
+- `press-field-form.hwpx` fixture에서 field/press/form 6개 package item을 확인했고, 실제 제출서식 smoke에서 checkbox 8개와 COM raw empty 결과를 같은 report에 남겼다.
+- 인쇄 여부, package-level field target 쓰기, press field fill은 다음 개발 단위다.
+
 ### Phase 3. 표 authoring 전 범위
 
 목표: 기존 표 채우기에서 "표를 새로 만들고 조작하는 기능"으로 확장한다.

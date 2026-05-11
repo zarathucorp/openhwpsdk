@@ -106,6 +106,8 @@ namespace OpenHwp.Automation.Cli
                     return FieldGet(commandArgs, visible, keepOpen);
                 case "field-list-raw":
                     return FieldListRaw(commandArgs, visible, keepOpen);
+                case "list-fields":
+                    return ListFields(commandArgs, visible, keepOpen);
                 case "field-set":
                     return FieldSet(commandArgs, visible, keepOpen);
                 case "replace-markdown":
@@ -437,6 +439,117 @@ namespace OpenHwp.Automation.Cli
             using (var hwp = OpenDocument(args[1], visible, keepOpen))
             {
                 Console.WriteLine(hwp.GetFieldListRaw(option, optionEx));
+            }
+
+            return 0;
+        }
+
+        private static int ListFields(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("Usage: list-fields <hwpxFileOrDirectory> [reportMarkdownPath] [--com] [--option value] [--option-ex value]");
+                return 1;
+            }
+
+            string reportPath = null;
+            var includeCom = false;
+            var option = 0;
+            var optionEx = 0;
+
+            for (var index = 2; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--com", StringComparison.OrdinalIgnoreCase))
+                {
+                    includeCom = true;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--option", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length || !int.TryParse(args[index + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out option))
+                    {
+                        Console.Error.WriteLine("--option requires an integer value.");
+                        return 1;
+                    }
+
+                    index++;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--option-ex", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length || !int.TryParse(args[index + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out optionEx))
+                    {
+                        Console.Error.WriteLine("--option-ex requires an integer value.");
+                        return 1;
+                    }
+
+                    index++;
+                    continue;
+                }
+
+                if (reportPath == null)
+                {
+                    reportPath = args[index];
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (includeCom && !File.Exists(args[1]))
+            {
+                Console.Error.WriteLine("--com can be used only with a single HWP/HWPX file.");
+                return 1;
+            }
+
+            var summary = HwpxFeatureScanner.Scan(args[1]);
+            var comRaw = string.Empty;
+            var comFields = new List<ComFieldInventoryItem>();
+            if (includeCom)
+            {
+                using (var hwp = OpenDocument(args[1], visible, keepOpen))
+                {
+                    comRaw = hwp.GetFieldListRaw(option, optionEx) ?? string.Empty;
+                    foreach (var name in SplitComFieldNames(comRaw))
+                    {
+                        var item = new ComFieldInventoryItem { Name = name };
+                        try
+                        {
+                            item.Exists = hwp.FieldExists(name);
+                            item.Text = item.Exists ? hwp.GetFieldText(name) : string.Empty;
+                        }
+                        catch (Exception ex)
+                        {
+                            item.Error = ex.Message;
+                        }
+
+                        comFields.Add(item);
+                    }
+                }
+            }
+
+            var packageItems = summary.Files.Sum(file => file.FieldFormItems.Count);
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                WriteFieldInventoryReport(summary, includeCom, comRaw, comFields, option, optionEx, reportPath);
+            }
+
+            Console.WriteLine("input=" + summary.InputPath);
+            Console.WriteLine("files=" + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_errors=" + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("xml_parse_errors=" + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_field_items=" + packageItems.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("field_markers=" + summary.Count("fieldMarkers").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("press_fields=" + summary.Count("pressFields").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("form_objects=" + summary.Count("formObjects").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("com_enabled=" + BoolText(includeCom));
+            Console.WriteLine("com_fields=" + comFields.Count.ToString(CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                Console.WriteLine(reportPath);
             }
 
             return 0;
@@ -2448,6 +2561,117 @@ namespace OpenHwp.Automation.Cli
             WriteUtf8File(reportPath, report.ToString());
         }
 
+        private static void WriteFieldInventoryReport(
+            HwpxFeatureScanner.ScanSummary summary,
+            bool includeCom,
+            string comRaw,
+            IList<ComFieldInventoryItem> comFields,
+            int option,
+            int optionEx,
+            string reportPath)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.FieldFormItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            var report = new StringBuilder();
+            report.AppendLine("# HWPX Field/Form Inventory");
+            report.AppendLine();
+            report.AppendLine("- input: `" + summary.InputPath + "`");
+            report.AppendLine("- files: " + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- package errors: " + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- XML parse errors: " + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- package field/form items: " + rows.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- COM enabled: " + BoolText(includeCom));
+            report.AppendLine();
+            report.AppendLine("## Summary");
+            report.AppendLine();
+            report.AppendLine("| signal | count |");
+            report.AppendLine("| --- | ---: |");
+            report.AppendLine("| field markers | " + summary.Count("fieldMarkers").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| fields | " + summary.Count("fields").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| field begins | " + summary.Count("fieldBegins").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| field ends | " + summary.Count("fieldEnds").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| press fields | " + summary.Count("pressFields").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| form objects | " + summary.Count("formObjects").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| check boxes | " + summary.Count("checkBoxes").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| radio buttons | " + summary.Count("radioButtons").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| combo boxes | " + summary.Count("comboBoxes").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| edit fields | " + summary.Count("editFields").ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine();
+
+            report.AppendLine("## Package Items");
+            report.AppendLine();
+            if (rows.Count == 0)
+            {
+                report.AppendLine("- No package field/form items detected.");
+            }
+            else
+            {
+                report.AppendLine("| file | part | kind | attrs | text |");
+                report.AppendLine("| --- | --- | --- | --- | --- |");
+                foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal).ThenBy(item => item.Detail.Attributes, StringComparer.Ordinal))
+                {
+                    report.Append("| ");
+                    report.Append(EscapeMarkdownTable(Path.GetFileName(row.File.Path)));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.PartPath));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Kind));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(row.Detail.Attributes));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(Abbreviate(row.Detail.Text, 100)));
+                    report.AppendLine(" |");
+                }
+            }
+
+            report.AppendLine();
+            report.AppendLine("## COM Fields");
+            report.AppendLine();
+            if (!includeCom)
+            {
+                report.AppendLine("- COM field listing was not requested.");
+            }
+            else
+            {
+                report.AppendLine("- option: " + option.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine("- optionEx: " + optionEx.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine("- raw length: " + (comRaw ?? string.Empty).Length.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine();
+                if (comFields.Count == 0)
+                {
+                    report.AppendLine("- No COM field names parsed.");
+                }
+                else
+                {
+                    report.AppendLine("| name | exists | text | error |");
+                    report.AppendLine("| --- | --- | --- | --- |");
+                    foreach (var field in comFields.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        report.Append("| ");
+                        report.Append(EscapeMarkdownTable(field.Name));
+                        report.Append(" | ");
+                        report.Append(BoolText(field.Exists));
+                        report.Append(" | ");
+                        report.Append(EscapeMarkdownTable(Abbreviate(field.Text, 100)));
+                        report.Append(" | ");
+                        report.Append(EscapeMarkdownTable(field.Error));
+                        report.AppendLine(" |");
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(comRaw))
+                {
+                    report.AppendLine();
+                    report.AppendLine("```text");
+                    report.AppendLine(comRaw.Replace("\0", "\\0"));
+                    report.AppendLine("```");
+                }
+            }
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
         private static void WritePageNumberReport(string inputPath, string outputPath, int drawPos, string sideChar, bool applied, string reportPath)
         {
             if (string.IsNullOrWhiteSpace(reportPath))
@@ -2694,6 +2918,21 @@ namespace OpenHwp.Automation.Cli
                 .Replace("\n", " ");
         }
 
+        private static IList<string> SplitComFieldNames(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return new List<string>();
+            }
+
+            return raw
+                .Split(new[] { '\u0002', '\u0003', '\0', '\r', '\n', '\t', ';', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => item.Trim())
+                .Where(item => item.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         private static void WriteUtf8File(string path, string text)
         {
             var directory = Path.GetDirectoryName(path);
@@ -2913,6 +3152,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] field-exists <inputPath> <fieldName>");
             Console.WriteLine("  [--visible] [--keep-open] field-get <inputPath> <fieldName>");
             Console.WriteLine("  [--visible] [--keep-open] field-list-raw <inputPath> [option] [optionEx]");
+            Console.WriteLine("  [--visible] [--keep-open] list-fields <hwpxFileOrDirectory> [reportMarkdownPath] [--com] [--option value] [--option-ex value]");
             Console.WriteLine("  [--visible] [--keep-open] field-set <inputPath> <fieldName> <text> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-markdown <inputPath> <markdownPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
@@ -2940,6 +3180,17 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] demo-feature <featureName> [key=value ...] [--open <path>] [--save <path>]");
             Console.WriteLine("  [--visible] [--keep-open] run <command>");
             Console.WriteLine("  [--visible] [--keep-open] action <actionName> [key=value ...] [--open <path>] [--save <path>]");
+        }
+
+        private sealed class ComFieldInventoryItem
+        {
+            public string Name { get; set; }
+
+            public bool Exists { get; set; }
+
+            public string Text { get; set; }
+
+            public string Error { get; set; }
         }
     }
 }
