@@ -145,6 +145,16 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible table-cell-set C:\temp\template.hwpx C:\temp\cell-out.hwpx 3 1 1 "cell text"
 ```
 
+Use HWP COM-backed rich copy/paste when an existing reference document already has the table or control formatting you need:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls C:\temp\reference.hwpx C:\temp\reference-controls.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc C:\temp\reference.hwpx C:\temp\target.hwpx --source table:0 --target doc-end --report C:\temp\copy-probe.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc C:\temp\reference.hwpx C:\temp\target.hwpx C:\temp\copied.hwpx --source table:0 --target doc-end --report C:\temp\copy-report.md
+```
+
+`copy-from-doc` currently supports rich source selection for whole tables and generic controls (`table:<index>` or `control:<ctrlId>:<index>`). Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing, so be careful with merged or irregular tables. Source text ranges and image-specific selectors are not implemented yet; use `list-controls` first to inspect how HWP exposes pictures or other objects in real documents.
+
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-list
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe demo-feature insertTable Rows=2 Cols=3 TreatAsChar=false --save C:\temp\table.hwpx

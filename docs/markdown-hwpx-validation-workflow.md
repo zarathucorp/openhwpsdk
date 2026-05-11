@@ -155,6 +155,16 @@ Fill an existing HWPX table without recreating it:
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "test\out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
 ```
 
+Copy a whole table or control from a reference HWP/HWPX document through HWP's editor-backed clipboard path:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls "<reference.hwpx>" "test\out\reference_controls.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc "<reference.hwpx>" "<target.hwpx>" --source table:0 --target doc-end --report "test\out\copy_probe.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "test\out\copy_from_doc.hwpx" --source table:0 --target doc-end --report "test\out\copy_from_doc.md"
+```
+
+Use `probe-copy-from-doc` before mutation. Source selectors are intentionally limited to `table:<index>` and `control:<ctrlId>:<index>` until text-range selection is implemented. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
+
 Run structural layout validation:
 
 ```bat

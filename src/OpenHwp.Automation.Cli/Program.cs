@@ -138,6 +138,8 @@ namespace OpenHwp.Automation.Cli
                     return ListControls(commandArgs, visible, keepOpen);
                 case "probe-copy-from-doc":
                     return ProbeCopyFromDoc(commandArgs, visible, keepOpen);
+                case "copy-from-doc":
+                    return CopyFromDoc(commandArgs, visible, keepOpen);
                 case "replace-after-marker":
                     return ReplaceAfterMarker(commandArgs, visible, keepOpen);
                 case "replace-text":
@@ -1394,7 +1396,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,row,col>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -1478,6 +1480,118 @@ namespace OpenHwp.Automation.Cli
             }
 
             return sourceSelected && targetSelected ? 0 : 2;
+        }
+
+        private static int CopyFromDoc(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 4)
+            {
+                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            string sourceSelectorText = null;
+            var targetSelectorText = "doc-end";
+            string reportPath = null;
+
+            for (var index = 4; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--source", StringComparison.OrdinalIgnoreCase))
+                {
+                    sourceSelectorText = RequireValue(args, ref index, "--source");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--target", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetSelectorText = RequireValue(args, ref index, "--target");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceSelectorText))
+            {
+                Console.Error.WriteLine("Missing --source.");
+                return 1;
+            }
+
+            CopyLocation source;
+            string reason;
+            if (!CopyLocation.TryParse(sourceSelectorText, false, out source, out reason))
+            {
+                Console.Error.WriteLine(reason);
+                return 1;
+            }
+
+            CopyLocation target;
+            if (!CopyLocation.TryParse(targetSelectorText, true, out target, out reason))
+            {
+                Console.Error.WriteLine(reason);
+                return 1;
+            }
+
+            string sourceNote;
+            string targetNote;
+            string pasteNote;
+            bool sourceSelected;
+            bool sourceCopied;
+            bool targetSelected;
+            bool pasted;
+
+            using (var sourceHwp = CreateSession(visible, keepOpen))
+            {
+                ConfigureSessionForAutomation(sourceHwp);
+                OpenSessionDocument(sourceHwp, args[1], string.Empty, "forceopen:true");
+                sourceSelected = TrySelectCopyLocation(sourceHwp, source, false, out sourceNote);
+                sourceCopied = sourceSelected && sourceHwp.CopySelection();
+                if (!sourceCopied && sourceSelected)
+                {
+                    sourceNote = sourceNote + "; Copy failed";
+                }
+
+                using (var targetHwp = CreateSession(visible, keepOpen))
+                {
+                    ConfigureSessionForAutomation(targetHwp);
+                    OpenSessionDocument(targetHwp, args[2], string.Empty, "forceopen:true");
+                    targetSelected = TrySelectCopyLocation(targetHwp, target, true, out targetNote);
+                    pasted = targetSelected && sourceCopied && targetHwp.PasteClipboard();
+                    pasteNote = pasted ? "clipboard pasted" : "paste skipped or failed";
+
+                    if (pasted)
+                    {
+                        targetHwp.SaveAs(args[3], ResolveSaveFormat(args[3]), string.Empty);
+                    }
+                }
+            }
+
+            Console.WriteLine("source_selected=" + BoolText(sourceSelected));
+            Console.WriteLine("source_copied=" + BoolText(sourceCopied));
+            Console.WriteLine("source_note=" + sourceNote);
+            Console.WriteLine("target_selected=" + BoolText(targetSelected));
+            Console.WriteLine("target_note=" + targetNote);
+            Console.WriteLine("pasted=" + BoolText(pasted));
+            Console.WriteLine("paste_note=" + pasteNote);
+            if (pasted)
+            {
+                Console.WriteLine(args[3]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, reportPath);
+                Console.WriteLine(reportPath);
+            }
+
+            return sourceSelected && sourceCopied && targetSelected && pasted ? 0 : 2;
         }
 
         private static int DemoList()
@@ -2114,6 +2228,52 @@ namespace OpenHwp.Automation.Cli
             WriteUtf8File(reportPath, report.ToString());
         }
 
+        private static void WriteCopyFromDocReport(
+            string sourcePath,
+            string targetPath,
+            string outputPath,
+            CopyLocation source,
+            CopyLocation target,
+            bool sourceSelected,
+            bool sourceCopied,
+            string sourceNote,
+            bool targetSelected,
+            string targetNote,
+            bool pasted,
+            string pasteNote,
+            string reportPath)
+        {
+            var report = new StringBuilder();
+            report.AppendLine("# Copy From Doc Report");
+            report.AppendLine();
+            report.AppendLine("- source: `" + sourcePath + "`");
+            report.AppendLine("- target: `" + targetPath + "`");
+            report.AppendLine("- output: `" + outputPath + "`");
+            report.AppendLine("- source selector: `" + source.Raw + "`");
+            report.AppendLine("- target selector: `" + target.Raw + "`");
+            report.AppendLine("- verdict: " + (sourceSelected && sourceCopied && targetSelected && pasted ? "applied" : "failed"));
+            report.AppendLine();
+            report.AppendLine("| step | ok | note |");
+            report.AppendLine("| --- | --- | --- |");
+            AppendCopyReportRow(report, "source select", sourceSelected, sourceNote);
+            AppendCopyReportRow(report, "source copy", sourceCopied, sourceCopied ? "selection copied" : "copy failed");
+            AppendCopyReportRow(report, "target select", targetSelected, targetNote);
+            AppendCopyReportRow(report, "paste", pasted, pasteNote);
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendCopyReportRow(StringBuilder report, string step, bool ok, string note)
+        {
+            report.Append("| ");
+            report.Append(EscapeMarkdownTable(step));
+            report.Append(" | ");
+            report.Append(BoolText(ok));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(note));
+            report.AppendLine(" |");
+        }
+
         private static string EscapeMarkdownTable(string value)
         {
             return (value ?? string.Empty)
@@ -2177,6 +2337,12 @@ namespace OpenHwp.Automation.Cli
 
                 if (trimmed.StartsWith("table:", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (target)
+                    {
+                        reason = "table selector is source-only; use control:tbl:<index> as an explicit target control selector.";
+                        return false;
+                    }
+
                     int index;
                     if (!TryParseNonNegative(trimmed.Substring("table:".Length), out index))
                     {
@@ -2301,7 +2467,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,row,col>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");

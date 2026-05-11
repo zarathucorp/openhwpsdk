@@ -93,6 +93,14 @@
 - 상세 inventory report는 header/footer, field/form, reference, note 신호를 파일/part/type/text 단위로 보여준다.
 - 이 단계는 corpus inventory이며, 해당 기능의 write/edit 지원을 의미하지 않는다. 실제 작성 기능은 각 phase의 별도 개발 단위에서 검증한다.
 
+복붙 자동화 상태(2026-05-11):
+
+- HWP COM 기반 `list-controls`, `probe-copy-from-doc`, `copy-from-doc` 명령을 추가했다.
+- 현재 rich copy source는 `table:<index>`와 `control:<ctrlId>:<index>`만 지원한다.
+- target은 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<ctrlId>:<index>`를 지원한다.
+- 실제 제출서식 smoke에서 `table:0`을 대상 문서 끝에 붙여넣고, 표 48개 -> 49개, changed core tables 0, layout verdict pass를 확인했다.
+- 문단 범위 복사와 이미지 전용 selector는 아직 미구현이다.
+
 ### Phase 1. 머리말/꼬리말 및 쪽/구역 모델
 
 목표: 실무 문서에서 가장 자주 쓰는 쪽 기반 반복 영역을 안전하게 읽고 쓴다.

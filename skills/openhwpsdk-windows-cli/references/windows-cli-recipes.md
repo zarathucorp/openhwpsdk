@@ -151,6 +151,28 @@ Set one cell:
 
 Merged tables can make row/column movement misleading. Verify with map/probe evidence or a visible HWP check before relying on a cell coordinate.
 
+## Rich Copy/Paste From Reference Documents
+
+Inspect controls in the reference document:
+
+```powershell
+& $cli --visible list-controls '<reference.hwpx>' 'test\out\reference_controls.md'
+```
+
+Probe before mutating the target:
+
+```powershell
+& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source table:0 --target doc-end --report 'test\out\copy_probe.md'
+```
+
+Copy through HWP's editor-backed clipboard path:
+
+```powershell
+& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
+```
+
+Supported source selectors are `table:<index>` and `control:<ctrlId>:<index>`. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Source text ranges and image-specific selectors are not implemented yet. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
+
 ## Acceptance Checklist
 
 - `validate-layout` exits `0`.

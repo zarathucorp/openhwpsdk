@@ -70,6 +70,16 @@ For existing tables, inspect Markdown tables first, then fill existing cells:
 
 Use row/column table writes carefully around merged or irregular tables. Prefer map/probe evidence or a dedicated table dump/resolver before claiming the cell target is safe.
 
+For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe first:
+
+```powershell
+& $cli --visible list-controls '<reference.hwpx>' 'test\out\reference_controls.md'
+& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source table:0 --target doc-end --report 'test\out\copy_probe.md'
+& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
+```
+
+`copy-from-doc` currently supports whole-table and generic-control sources only: `table:<index>` and `control:<ctrlId>:<index>`. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Text-range and image-specific copy are future work; inspect real files with `list-controls` before claiming support.
+
 ## Feature Coverage
 
 Use `scan-hwpx-features` when the question is what HWPX authoring features are present in a file or corpus:
