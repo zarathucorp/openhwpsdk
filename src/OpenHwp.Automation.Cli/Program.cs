@@ -134,6 +134,10 @@ namespace OpenHwp.Automation.Cli
                     return ValidateContent(commandArgs);
                 case "scan-hwpx-features":
                     return ScanHwpxFeatures(commandArgs);
+                case "list-controls":
+                    return ListControls(commandArgs, visible, keepOpen);
+                case "probe-copy-from-doc":
+                    return ProbeCopyFromDoc(commandArgs, visible, keepOpen);
                 case "replace-after-marker":
                     return ReplaceAfterMarker(commandArgs, visible, keepOpen);
                 case "replace-text":
@@ -1355,6 +1359,127 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int ListControls(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 2 || args.Length > 3)
+            {
+                Console.Error.WriteLine("Usage: list-controls <inputPath> [reportMarkdownPath]");
+                return 1;
+            }
+
+            IList<HwpControlInfo> controls;
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
+                controls = hwp.ListControls();
+            }
+
+            Console.WriteLine("controls=" + controls.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (var group in controls.GroupBy(item => item.CtrlId).OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("control_type=" + group.Key + ",count=" + group.Count().ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (args.Length == 3)
+            {
+                WriteControlsReport(args[1], controls, args[2]);
+                Console.WriteLine(args[2]);
+            }
+
+            return 0;
+        }
+
+        private static int ProbeCopyFromDoc(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,row,col>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            string sourceSelectorText = null;
+            var targetSelectorText = "doc-end";
+            string reportPath = null;
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--source", StringComparison.OrdinalIgnoreCase))
+                {
+                    sourceSelectorText = RequireValue(args, ref index, "--source");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--target", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetSelectorText = RequireValue(args, ref index, "--target");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceSelectorText))
+            {
+                Console.Error.WriteLine("Missing --source.");
+                return 1;
+            }
+
+            CopyLocation source;
+            string reason;
+            if (!CopyLocation.TryParse(sourceSelectorText, false, out source, out reason))
+            {
+                Console.Error.WriteLine(reason);
+                return 1;
+            }
+
+            CopyLocation target;
+            if (!CopyLocation.TryParse(targetSelectorText, true, out target, out reason))
+            {
+                Console.Error.WriteLine(reason);
+                return 1;
+            }
+
+            string sourceNote;
+            string targetNote;
+            bool sourceSelected;
+            bool targetSelected;
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
+                sourceSelected = TrySelectCopyLocation(hwp, source, false, out sourceNote);
+            }
+
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[2], string.Empty, "forceopen:true");
+                targetSelected = TrySelectCopyLocation(hwp, target, true, out targetNote);
+            }
+
+            Console.WriteLine("source_selected=" + BoolText(sourceSelected));
+            Console.WriteLine("source_note=" + sourceNote);
+            Console.WriteLine("target_selected=" + BoolText(targetSelected));
+            Console.WriteLine("target_note=" + targetNote);
+
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, reportPath);
+                Console.WriteLine(reportPath);
+            }
+
+            return sourceSelected && targetSelected ? 0 : 2;
+        }
+
         private static int DemoList()
         {
             Console.WriteLine("insertText");
@@ -1858,9 +1983,293 @@ namespace OpenHwp.Automation.Cli
             return value.Substring(0, maxLength - 3) + "...";
         }
 
+        private static void WriteControlsReport(string inputPath, IList<HwpControlInfo> controls, string reportPath)
+        {
+            var report = new StringBuilder();
+            report.AppendLine("# HWP Control Inventory");
+            report.AppendLine();
+            report.AppendLine("- input: `" + inputPath + "`");
+            report.AppendLine("- controls: " + controls.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine();
+            report.AppendLine("## Counts");
+            report.AppendLine();
+            report.AppendLine("| ctrlId | count |");
+            report.AppendLine("| --- | ---: |");
+            foreach (var group in controls.GroupBy(item => item.CtrlId).OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                report.Append("| ");
+                report.Append(EscapeMarkdownTable(group.Key));
+                report.Append(" | ");
+                report.Append(group.Count().ToString(CultureInfo.InvariantCulture));
+                report.AppendLine(" |");
+            }
+
+            report.AppendLine();
+            report.AppendLine("## Controls");
+            report.AppendLine();
+            report.AppendLine("| index | ctrlId | typeIndex |");
+            report.AppendLine("| ---: | --- | ---: |");
+            foreach (var control in controls)
+            {
+                report.Append("| ");
+                report.Append(control.Index.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(control.CtrlId));
+                report.Append(" | ");
+                report.Append(control.TypeIndex.ToString(CultureInfo.InvariantCulture));
+                report.AppendLine(" |");
+            }
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static bool TrySelectCopyLocation(HwpSession hwp, CopyLocation location, bool target, out string note)
+        {
+            if (location.Kind == "doc-end")
+            {
+                var moved = hwp.MoveDocEnd();
+                note = moved ? "moved to document end" : "MoveDocEnd failed";
+                return moved;
+            }
+
+            if (location.Kind == "table")
+            {
+                var selected = hwp.SelectTableControl(location.Index);
+                note = selected
+                    ? "selected table control " + location.Index.ToString(CultureInfo.InvariantCulture)
+                    : "table control was not found: " + location.Index.ToString(CultureInfo.InvariantCulture);
+                return selected;
+            }
+
+            if (location.Kind == "control")
+            {
+                var selected = hwp.SelectControl(location.CtrlId, location.Index);
+                note = selected
+                    ? "selected control " + location.CtrlId + ":" + location.Index.ToString(CultureInfo.InvariantCulture)
+                    : "control was not found: " + location.CtrlId + ":" + location.Index.ToString(CultureInfo.InvariantCulture);
+                return selected;
+            }
+
+            if (location.Kind == "anchor")
+            {
+                var moved = hwp.MoveToTextAnchor(location.Text, location.Index);
+                note = moved
+                    ? "moved to anchor occurrence " + location.Index.ToString(CultureInfo.InvariantCulture)
+                    : "anchor was not found";
+                return moved;
+            }
+
+            if (location.Kind == "cell")
+            {
+                if (!target)
+                {
+                    note = "cell selector is target-only";
+                    return false;
+                }
+
+                var selected = hwp.SelectTableCell(location.Row, location.Column, location.TableIndex);
+                note = selected
+                    ? "selected target cell"
+                    : "target cell was not selected";
+                return selected;
+            }
+
+            note = "unsupported selector: " + location.Raw;
+            return false;
+        }
+
+        private static void WriteCopyProbeReport(
+            string sourcePath,
+            string targetPath,
+            CopyLocation source,
+            CopyLocation target,
+            bool sourceSelected,
+            string sourceNote,
+            bool targetSelected,
+            string targetNote,
+            string reportPath)
+        {
+            var report = new StringBuilder();
+            report.AppendLine("# Copy From Doc Probe");
+            report.AppendLine();
+            report.AppendLine("- source: `" + sourcePath + "`");
+            report.AppendLine("- target: `" + targetPath + "`");
+            report.AppendLine("- source selector: `" + source.Raw + "`");
+            report.AppendLine("- target selector: `" + target.Raw + "`");
+            report.AppendLine("- verdict: " + (sourceSelected && targetSelected ? "ready" : "blocked"));
+            report.AppendLine();
+            report.AppendLine("| side | selected | note |");
+            report.AppendLine("| --- | --- | --- |");
+            report.Append("| source | ");
+            report.Append(BoolText(sourceSelected));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(sourceNote));
+            report.AppendLine(" |");
+            report.Append("| target | ");
+            report.Append(BoolText(targetSelected));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(targetNote));
+            report.AppendLine(" |");
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static string EscapeMarkdownTable(string value)
+        {
+            return (value ?? string.Empty)
+                .Replace("\\", "\\\\")
+                .Replace("|", "\\|")
+                .Replace("\r", " ")
+                .Replace("\n", " ");
+        }
+
+        private static void WriteUtf8File(string path, string text)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, text ?? string.Empty, new UTF8Encoding(true));
+        }
+
         private static string BoolText(bool value)
         {
             return value.ToString().ToLowerInvariant();
+        }
+
+        private sealed class CopyLocation
+        {
+            public string Raw { get; private set; }
+
+            public string Kind { get; private set; }
+
+            public string CtrlId { get; private set; }
+
+            public int Index { get; private set; }
+
+            public string Text { get; private set; }
+
+            public int TableIndex { get; private set; }
+
+            public int Row { get; private set; }
+
+            public int Column { get; private set; }
+
+            public static bool TryParse(string raw, bool target, out CopyLocation location, out string reason)
+            {
+                location = null;
+                reason = null;
+
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    reason = "Selector is required.";
+                    return false;
+                }
+
+                var trimmed = raw.Trim();
+                if (target && string.Equals(trimmed, "doc-end", StringComparison.OrdinalIgnoreCase))
+                {
+                    location = new CopyLocation { Raw = trimmed, Kind = "doc-end" };
+                    return true;
+                }
+
+                if (trimmed.StartsWith("table:", StringComparison.OrdinalIgnoreCase))
+                {
+                    int index;
+                    if (!TryParseNonNegative(trimmed.Substring("table:".Length), out index))
+                    {
+                        reason = "table selector must be table:<zero-based-index>.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "table", Index = index };
+                    return true;
+                }
+
+                if (trimmed.StartsWith("control:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var value = trimmed.Substring("control:".Length);
+                    var separator = value.LastIndexOf(':');
+                    string ctrlId;
+                    var typeIndex = 0;
+
+                    if (separator >= 0)
+                    {
+                        ctrlId = value.Substring(0, separator);
+                        if (!TryParseNonNegative(value.Substring(separator + 1), out typeIndex))
+                        {
+                            reason = "control selector must be control:<ctrlId>:<zero-based-type-index>.";
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        ctrlId = value;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(ctrlId))
+                    {
+                        reason = "control selector requires ctrlId.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "control", CtrlId = ctrlId, Index = typeIndex };
+                    return true;
+                }
+
+                if (trimmed.StartsWith("anchor:", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!target)
+                    {
+                        reason = "anchor selector is target-only until text range copy is implemented.";
+                        return false;
+                    }
+
+                    var text = trimmed.Substring("anchor:".Length);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        reason = "anchor selector requires text.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "anchor", Text = text, Index = 0 };
+                    return true;
+                }
+
+                if (target && trimmed.StartsWith("cell:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tokens = trimmed.Substring("cell:".Length).Split(',');
+                    if (tokens.Length != 3)
+                    {
+                        reason = "cell selector must be cell:<tableIndex>,<rowMoveCount>,<columnMoveCount>.";
+                        return false;
+                    }
+
+                    int tableIndex;
+                    int row;
+                    int column;
+                    if (!TryParseNonNegative(tokens[0], out tableIndex) ||
+                        !TryParseNonNegative(tokens[1], out row) ||
+                        !TryParseNonNegative(tokens[2], out column))
+                    {
+                        reason = "cell selector values must be zero-based non-negative integers.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "cell", TableIndex = tableIndex, Row = row, Column = column };
+                    return true;
+                }
+
+                reason = "Unsupported selector: " + raw;
+                return false;
+            }
+
+            private static bool TryParseNonNegative(string raw, out int value)
+            {
+                return int.TryParse((raw ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value >= 0;
+            }
         }
 
         private static void PrintUsage()
@@ -1891,6 +2300,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,row,col>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
