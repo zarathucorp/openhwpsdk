@@ -604,7 +604,7 @@ namespace OpenHwp.Automation
                 1,
                 () =>
                 {
-                    if (!SelectTable(tableIndex))
+                    if (!SelectTableControl(tableIndex))
                     {
                         return false;
                     }
@@ -942,6 +942,103 @@ namespace OpenHwp.Automation
             }
 
             return WithEditMode(1, () => TryFindOccurrence(text, occurrenceIndex));
+        }
+
+        public bool MoveToTextAnchor(string text, int occurrenceIndex = 0)
+        {
+            return FindTextOccurrence(text, occurrenceIndex);
+        }
+
+        public bool MoveDocBegin()
+        {
+            return TryRunCommand("MoveDocBegin");
+        }
+
+        public bool MoveDocEnd()
+        {
+            return TryRunCommand("MoveDocEnd");
+        }
+
+        public bool CopySelection()
+        {
+            if (SelectionMode <= 0)
+            {
+                return false;
+            }
+
+            return TryRunCommand("Copy");
+        }
+
+        public bool PasteClipboard()
+        {
+            return TryRunCommand("Paste");
+        }
+
+        public IList<HwpControlInfo> ListControls()
+        {
+            EnsureDocument();
+
+            var controls = new List<HwpControlInfo>();
+            var typeCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            object ctrl = null;
+            var index = 0;
+
+            try
+            {
+                ctrl = ((dynamic)_hwpObject).HeadCtrl;
+                while (ctrl != null)
+                {
+                    object next = null;
+
+                    try
+                    {
+                        var ctrlId = Convert.ToString(((dynamic)ctrl).CtrlID);
+                        next = ((dynamic)ctrl).Next;
+
+                        int typeIndex;
+                        typeCounts.TryGetValue(ctrlId ?? string.Empty, out typeIndex);
+                        controls.Add(new HwpControlInfo(index, ctrlId, typeIndex));
+                        typeCounts[ctrlId ?? string.Empty] = typeIndex + 1;
+                        index++;
+                    }
+                    finally
+                    {
+                        ComHelpers.SafeRelease(ctrl);
+                    }
+
+                    ctrl = next;
+                }
+            }
+            catch (COMException ex)
+            {
+                throw new HwpAutomationException("Failed to list document controls.", ex);
+            }
+            finally
+            {
+                ComHelpers.SafeRelease(ctrl);
+            }
+
+            return controls;
+        }
+
+        public bool SelectTableControl(int tableIndex = 0)
+        {
+            return SelectControl("tbl", tableIndex);
+        }
+
+        public bool SelectControl(string ctrlId, int index = 0)
+        {
+            if (string.IsNullOrWhiteSpace(ctrlId))
+            {
+                throw new ArgumentException("Control id is required.", nameof(ctrlId));
+            }
+
+            if (index < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+
+            return SelectControlById(ctrlId, index);
         }
 
         public bool InsertPageBreak()
@@ -1526,7 +1623,7 @@ namespace OpenHwp.Automation
             return TryRunCommand(command);
         }
 
-        private bool SelectTable(int tableIndex)
+        private bool SelectControlById(string ctrlId, int index)
         {
             object ctrl = null;
             var currentIndex = 0;
@@ -1541,12 +1638,12 @@ namespace OpenHwp.Automation
 
                     try
                     {
-                        var ctrlId = Convert.ToString(((dynamic)ctrl).CtrlID);
+                        var currentCtrlId = Convert.ToString(((dynamic)ctrl).CtrlID);
                         next = ((dynamic)ctrl).Next;
 
-                        if (string.Equals(ctrlId, "tbl", StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(ctrlId, currentCtrlId, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (currentIndex == tableIndex)
+                            if (currentIndex == index)
                             {
                                 anchor = ((dynamic)ctrl).GetAnchorPos(0);
                                 if (anchor != null && !Convert.ToBoolean(((dynamic)_hwpObject).SetPosBySet(anchor)))

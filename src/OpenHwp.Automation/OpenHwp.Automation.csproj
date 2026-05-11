@@ -37,6 +37,7 @@
   <ItemGroup>
     <Compile Include="ComHelpers.cs" />
     <Compile Include="HwpAutomationException.cs" />
+    <Compile Include="HwpControlInfo.cs" />
     <Compile Include="HwpParameterSet.cs" />
     <Compile Include="HwpRect.cs" />
     <Compile Include="HwpSession.cs" />
