@@ -93,13 +93,13 @@ namespace OpenHwp.Automation.Cli
                 var displaySize = FitDisplaySize(imageSize, bodyArea);
                 var picture = CreatePictureElement(
                     imageId,
-                    write,
+                    write.ResolvedPath,
                     imageSize,
                     displaySize,
                     nextShapeId++,
                     nextInstanceId++,
                     nextZOrder++);
-                InsertPictureAfterAnchor(textNode, write.AnchorText, picture);
+                InsertPictureAfterAnchor(textNode, write.AnchorText, picture, true);
                 nextImageIndex++;
                 inserted++;
                 write.Status = "applied";
@@ -120,7 +120,188 @@ namespace OpenHwp.Automation.Cli
             return inserted;
         }
 
-        private static void InsertPictureAfterAnchor(XElement textNode, string anchorText, XElement picture)
+        public static bool TryInsertImageAtParagraph(
+            IDictionary<string, byte[]> entries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            string partPath,
+            XElement paragraph,
+            string anchorText,
+            string imagePath,
+            int requestedWidth,
+            int requestedHeight,
+            bool removeAnchorText,
+            out string note)
+        {
+            if (paragraph == null)
+            {
+                note = "paragraph was not found";
+                return false;
+            }
+
+            XElement textNode = null;
+            if (!string.IsNullOrWhiteSpace(anchorText))
+            {
+                textNode = HwpxTableModel.DirectTextNodesOfParagraph(paragraph)
+                    .FirstOrDefault(item => (item.Value ?? string.Empty).Contains(anchorText));
+            }
+
+            if (textNode == null)
+            {
+                if (removeAnchorText &&
+                    !string.IsNullOrWhiteSpace(anchorText) &&
+                    string.Equals(NormalizeText(HwpxTableModel.TextOfDirectParagraph(paragraph)), NormalizeText(anchorText), StringComparison.Ordinal))
+                {
+                    ClearDirectParagraphText(paragraph);
+                }
+
+                textNode = EnsureParagraphInsertionTextNode(paragraph);
+                removeAnchorText = false;
+            }
+
+            XElement picture;
+            DisplaySize displaySize;
+            if (!TryCreatePackagePicture(entries, xmlDocuments, touchedParts, paragraph, imagePath, requestedWidth, requestedHeight, out picture, out displaySize, out note))
+            {
+                return false;
+            }
+
+            InsertPictureAfterAnchor(textNode, anchorText, picture, removeAnchorText);
+            if (!string.IsNullOrWhiteSpace(partPath))
+            {
+                touchedParts.Add(partPath);
+            }
+
+            note = string.Format(
+                CultureInfo.InvariantCulture,
+                "package image; display={0}x{1}",
+                displaySize.Width,
+                displaySize.Height);
+            return true;
+        }
+
+        public static bool TryInsertImageInParagraph(
+            IDictionary<string, byte[]> entries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            string partPath,
+            XElement paragraph,
+            string imagePath,
+            int requestedWidth,
+            int requestedHeight,
+            out string note)
+        {
+            if (paragraph == null)
+            {
+                note = "paragraph was not found";
+                return false;
+            }
+
+            XElement picture;
+            DisplaySize displaySize;
+            if (!TryCreatePackagePicture(entries, xmlDocuments, touchedParts, paragraph, imagePath, requestedWidth, requestedHeight, out picture, out displaySize, out note))
+            {
+                return false;
+            }
+
+            var textNode = EnsureParagraphInsertionTextNode(paragraph);
+            InsertPictureAfterTextNode(textNode, picture);
+            if (!string.IsNullOrWhiteSpace(partPath))
+            {
+                touchedParts.Add(partPath);
+            }
+
+            note = string.Format(
+                CultureInfo.InvariantCulture,
+                "package image; display={0}x{1}",
+                displaySize.Width,
+                displaySize.Height);
+            return true;
+        }
+
+        private static bool TryCreatePackagePicture(
+            IDictionary<string, byte[]> entries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement paragraph,
+            string imagePath,
+            int requestedWidth,
+            int requestedHeight,
+            out XElement picture,
+            out DisplaySize displaySize,
+            out string note)
+        {
+            picture = null;
+            displaySize = new DisplaySize(0, 0);
+            note = string.Empty;
+
+            if (entries == null)
+            {
+                note = "package entries are missing";
+                return false;
+            }
+
+            if (xmlDocuments == null)
+            {
+                note = "package XML documents are missing";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                note = "image file was not found";
+                return false;
+            }
+
+            var packageKey = FindContentPackagePath(entries, xmlDocuments);
+            if (string.IsNullOrWhiteSpace(packageKey))
+            {
+                note = "content.hpf was not found";
+                return false;
+            }
+
+            XDocument package;
+            if (!xmlDocuments.TryGetValue(packageKey, out package))
+            {
+                note = "content package XML was not parsed: " + packageKey;
+                return false;
+            }
+
+            ImageSize imageSize;
+            try
+            {
+                imageSize = ReadImageSize(imagePath);
+            }
+            catch (Exception ex)
+            {
+                note = "could not read image: " + ex.GetType().Name + ": " + ex.Message;
+                return false;
+            }
+
+            var section = paragraph == null ? null : paragraph.Document;
+            var extension = NormalizeImageExtension(Path.GetExtension(imagePath));
+            var imageId = "image" + NextImageIndex(entries, package).ToString(CultureInfo.InvariantCulture);
+            var imageEntryPath = "BinData/" + imageId + extension;
+            entries[imageEntryPath] = File.ReadAllBytes(imagePath);
+            AddPackageManifestItem(package, imageId, imageEntryPath, MediaTypeForExtension(extension));
+            if (touchedParts != null)
+            {
+                touchedParts.Add(packageKey);
+            }
+
+            displaySize = ResolveDisplaySize(imageSize, section, requestedWidth, requestedHeight);
+            picture = CreatePictureElement(
+                imageId,
+                imagePath,
+                imageSize,
+                displaySize,
+                NextShapeId(section),
+                NextInstanceId(section),
+                NextZOrder(section));
+            return true;
+        }
+
+        private static void InsertPictureAfterAnchor(XElement textNode, string anchorText, XElement picture, bool removeAnchorText)
         {
             var paragraph = textNode.Ancestors(Hp + "p").FirstOrDefault();
             if (paragraph != null)
@@ -129,8 +310,28 @@ namespace OpenHwp.Automation.Cli
             }
 
             var current = textNode.Value ?? string.Empty;
-            textNode.Value = current.Replace(anchorText, string.Empty);
+            if (removeAnchorText && !string.IsNullOrEmpty(anchorText))
+            {
+                textNode.Value = current.Replace(anchorText, string.Empty);
+            }
+
             if (textNode.Value.Length == 0)
+            {
+                textNode.Value = " ";
+            }
+
+            InsertPictureAfterTextNode(textNode, picture);
+        }
+
+        private static void InsertPictureAfterTextNode(XElement textNode, XElement picture)
+        {
+            var paragraph = textNode.Ancestors(Hp + "p").FirstOrDefault();
+            if (paragraph != null)
+            {
+                paragraph.Elements(Hp + "linesegarray").Remove();
+            }
+
+            if ((textNode.Value ?? string.Empty).Length == 0)
             {
                 textNode.Value = " ";
             }
@@ -139,16 +340,82 @@ namespace OpenHwp.Automation.Cli
             picture.AddAfterSelf(new XElement(Hp + "t"));
         }
 
+        private static XElement EnsureParagraphInsertionTextNode(XElement paragraph)
+        {
+            var textNode = HwpxTableModel.DirectTextNodesOfParagraph(paragraph).LastOrDefault();
+            if (textNode != null)
+            {
+                return textNode;
+            }
+
+            var run = paragraph.Elements(Hp + "run").FirstOrDefault();
+            if (run == null)
+            {
+                run = new XElement(Hp + "run");
+                var lineSegArray = paragraph.Element(Hp + "linesegarray");
+                if (lineSegArray == null)
+                {
+                    paragraph.Add(run);
+                }
+                else
+                {
+                    lineSegArray.AddBeforeSelf(run);
+                }
+            }
+
+            textNode = new XElement(Hp + "t", " ");
+            run.Add(textNode);
+            return textNode;
+        }
+
+        private static void ClearDirectParagraphText(XElement paragraph)
+        {
+            foreach (var textNode in HwpxTableModel.DirectTextNodesOfParagraph(paragraph))
+            {
+                textNode.Value = string.Empty;
+            }
+        }
+
+        private static string NormalizeText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            var previousWasWhiteSpace = false;
+            foreach (var character in value.Trim())
+            {
+                if (char.IsWhiteSpace(character))
+                {
+                    if (!previousWasWhiteSpace)
+                    {
+                        builder.Append(' ');
+                    }
+
+                    previousWasWhiteSpace = true;
+                }
+                else
+                {
+                    builder.Append(character);
+                    previousWasWhiteSpace = false;
+                }
+            }
+
+            return builder.ToString();
+        }
+
         private static XElement CreatePictureElement(
             string imageId,
-            SubmissionTemplateFiller.ImageWriteOperation write,
+            string sourcePath,
             ImageSize imageSize,
             DisplaySize displaySize,
             long shapeId,
             long instanceId,
             int zOrder)
         {
-            var sourceName = Path.GetFileName(write.ResolvedPath);
+            var sourceName = Path.GetFileName(sourcePath);
             var dimWidth = NaturalHwpxWidth(imageSize);
             var dimHeight = NaturalHwpxHeight(imageSize);
             var width = Math.Max(1, displaySize.Width);
@@ -292,7 +559,7 @@ namespace OpenHwp.Automation.Cli
 
         private static long NextShapeId(XDocument section)
         {
-            return section.Descendants(Hp + "pic")
+            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
                 .Select(item => GetLong(item, "id", 1000000000))
                 .DefaultIfEmpty(1000000000)
                 .Max() + 1;
@@ -300,7 +567,7 @@ namespace OpenHwp.Automation.Cli
 
         private static long NextInstanceId(XDocument section)
         {
-            return section.Descendants(Hp + "pic")
+            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
                 .Select(item => GetLong(item, "instid", 5000000))
                 .DefaultIfEmpty(5000000)
                 .Max() + 1;
@@ -308,7 +575,7 @@ namespace OpenHwp.Automation.Cli
 
         private static int NextZOrder(XDocument section)
         {
-            return section.Descendants(Hp + "pic")
+            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
                 .Select(item => GetInt(item, "zOrder", 100))
                 .DefaultIfEmpty(100)
                 .Max() + 1;
@@ -338,6 +605,16 @@ namespace OpenHwp.Automation.Cli
             return new DisplaySize(
                 Math.Max(1, (int)Math.Round(naturalWidth * scale)),
                 Math.Max(1, (int)Math.Round(naturalHeight * scale)));
+        }
+
+        private static DisplaySize ResolveDisplaySize(ImageSize imageSize, XDocument section, int requestedWidth, int requestedHeight)
+        {
+            if (requestedWidth > 1000 && requestedHeight > 1000)
+            {
+                return new DisplaySize(requestedWidth, requestedHeight);
+            }
+
+            return FitDisplaySize(imageSize, GetBodyArea(section));
         }
 
         private static int NaturalHwpxWidth(ImageSize imageSize)
@@ -383,6 +660,21 @@ namespace OpenHwp.Automation.Cli
             return new BodyArea(
                 width > 0 ? width : FallbackBodyWidth,
                 height > 0 ? height : FallbackBodyHeight);
+        }
+
+        private static string FindContentPackagePath(IDictionary<string, byte[]> entries, IDictionary<string, XDocument> xmlDocuments)
+        {
+            if (xmlDocuments.ContainsKey("Contents/content.hpf"))
+            {
+                return "Contents/content.hpf";
+            }
+
+            if (xmlDocuments.ContainsKey("content.hpf"))
+            {
+                return "content.hpf";
+            }
+
+            return xmlDocuments.Keys.FirstOrDefault(path => path.EndsWith(".hpf", StringComparison.OrdinalIgnoreCase) && (entries == null || entries.ContainsKey(path))) ?? string.Empty;
         }
 
         private static string NormalizeImageExtension(string extension)

@@ -1,6 +1,6 @@
 # Submission HWPX Code Issues
 
-Reviewed on 2026-05-08 against the current `codex/hwp-automation` source tree.
+Reviewed on 2026-05-08 and updated on 2026-05-11 against the current `codex/hwp-automation` source tree.
 
 This note supersedes the first-run issue log for filling the submission template under `test/` from the Markdown draft under `test/`. Several issues below were real when discovered, but are no longer open in the same form after the later CLI and HWPX writer changes.
 
@@ -10,7 +10,7 @@ This note supersedes the first-run issue log for filling the submission template
 - `diagnose-com [inputPath]` reports HWP process state, COM registration, HWP version, visibility, file-path checker registration, message box mode, and optional document-open success.
 - `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir] [--markdown-table-mode text|render] [--image-mode package|com|none]` exists for this submission form.
 - `extract-form-map` still creates a whole-package map, and `probe-form-map` still verifies HWP-selectability before editor-backed writes.
-- `apply-form-map --package` now supports text-only package writes, writes apply details when `--report` is supplied, and writes package-layout validation to a sibling `*.layout.md` report.
+- `apply-form-map --package` now supports COM-free package text writes and package-level image embedding, writes apply details when `--report` is supplied, and writes package-layout validation to a sibling `*.layout.md` report.
 - `SimpleZipArchive.WriteAllPreservingTemplate` now provides the core package writer that preserves template entry order, compression method, timestamps, and untouched entries.
 - `validate-content` exists for required strings, Markdown-artifact checks, unresolved placeholder checks, repeated guide-like text warnings, and possible overflow warnings.
 - `HwpSession.Open` falls back to a temporary ASCII-like copy path when HWP COM fails to open the original path.
@@ -60,18 +60,18 @@ Remaining gap:
 
 ### 3. Former gap: HWPX package writing in the core CLI
 
-Status: resolved for text/package updates.
+Status: resolved for text writes and basic package-level image embedding.
 
 What changed:
 
 - `SimpleZipArchive` now reads and writes HWPX/ZIP packages.
 - `WriteAllPreservingTemplate` preserves the original package and replaces only changed entries.
-- `apply-form-map --package` applies text writes without HWP COM, writes apply attempted/applied/failed/skipped rows when `--report` is supplied, and writes layout validation to a sibling `*.layout.md` report.
+- `apply-form-map --package` applies text writes without HWP COM, embeds generic map `writeImage` paths as `BinData`/`hp:pic` objects, writes apply attempted/applied/failed/skipped rows when `--report` is supplied, and writes layout validation to a sibling `*.layout.md` report.
 - `fill-submission-template` writes text and supported Markdown table content through the package-preserving path, then inserts queued Markdown images through the profile-specific package image writer by default.
 
 Remaining gap:
 
-- Generic `apply-form-map --package` still skips image writes as unsafe, reports them as skipped, and returns nonzero when unsafe/image writes are present. This does not apply to the narrower `fill-submission-template --image-mode package` path, which has a tested profile-specific image inserter.
+- Generic package image insertion now covers ordinary anchor/cell images, manifest updates, and object id allocation, but it is still not a full drawing-object editor for arbitrary wrapping/positioning styles.
 - Package-mode text anchors are now applied from later paragraphs toward earlier paragraphs, but a richer section-scoped anchor resolver is still needed for heavily duplicated text.
 
 ### 4. Cell text replacement must preserve nested tables and non-target paragraphs
@@ -164,7 +164,7 @@ What changed:
 
 Remaining gap:
 
-- Generic package-map image insertion is still intentionally unsupported.
+- Generic package-map image insertion uses package-level natural sizing by default and supports explicit HWPX-unit dimensions; exact editor placement/wrapping should still be verified visually when it matters.
 - `--image-mode com` still depends on a healthy local HWP COM session. If COM hangs at `Create HWP COM instance`, fix the local HWP process state before retrying, then verify the result with content validation and PDF export.
 
 ### 10. HWP COM open fails on some Korean/special-character paths
@@ -219,19 +219,19 @@ Recommended next step:
 - Avoid copying console-mojibake text into tracked files.
 - Prefer `-LiteralPath`-safe examples for Korean or bracketed filenames.
 
-### D. Generic package-map image writes are intentionally unsupported
+### D. Generic package-map image writes need broader fixtures
 
 Current state:
 
 - HWP automation can insert images.
-- `apply-form-map --package` skips generic map image writes because arbitrary binary image resources and drawing-object XML require more context than replacing text nodes.
-- The submission profile is the exception: `fill-submission-template --image-mode package` has a narrow package-level image inserter for its own generated text anchors.
-- `apply-form-map --report` writes attempted/applied/failed/skipped details for HWP COM mode and package mode. Generic package mode records image writes as skipped and writes layout validation to a sibling `*.layout.md` report.
+- `apply-form-map --package` can now embed generic map `writeImage` paths by adding binary resources, manifest entries, and `hp:pic` drawing objects at resolved anchors or cells.
+- The submission profile still uses its own queueing logic for Markdown image lines, but both paths share the package-level image object writer.
+- `apply-form-map --report` writes attempted/applied/failed/skipped details for HWP COM mode and package mode, and package mode writes layout validation to a sibling `*.layout.md` report.
 
 Recommended next step:
 
-- Keep generic map image writes on the HWP automation path until a generalized package-level image writer exists.
-- If generic package-level image support is added, validate binary part insertion, manifest updates, object IDs, dimensions, and PDF render output.
+- Add regression fixtures for anchor image insertion, cell image insertion, repeated image ids, explicit HWPX-unit dimensions, and PDF render output.
+- Keep editor-specific wrapping/positioning cases on the HWP automation path until the package writer has fixtures for those object styles.
 
 ## Current Priority Order
 
@@ -240,4 +240,4 @@ Recommended next step:
 3. Improve generic anchor resolution with section-scoped semantic anchors and richer candidate reporting.
 4. Add the staged pipeline / final-promotion commands described in `test/openhwpsdk_개선사항_정리.md`.
 5. Normalize tracked docs and examples to readable UTF-8 Korean.
-6. Generalize package-level image insertion beyond the submission profile only after fixtures prove manifest/object/dimension handling across multiple templates.
+6. Expand package-level image insertion fixtures across multiple templates and object styles.

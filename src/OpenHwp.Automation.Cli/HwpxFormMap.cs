@@ -31,7 +31,7 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("mappingScope", "package"),
                 new XAttribute("generatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
 
-            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Use --package for text-only XML writes; use HWP automation for image writes or editor-backed behavior."));
+            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes and package-level image embedding; use HWP automation when editor-backed behavior is required."));
             root.Add(BuildPackageElement(entries, xmlDocuments, writablePartNames));
 
             var tablesElement = new XElement("tables");
@@ -173,6 +173,7 @@ namespace OpenHwp.Automation.Cli
             var entries = SimpleZipArchive.ReadAll(Path.GetFullPath(inputHwpxPath));
             var xmlDocuments = ParseXmlDocuments(entries);
             var mapDocument = XDocument.Load(mapPath, LoadOptions.PreserveWhitespace);
+            var mapDirectory = Path.GetDirectoryName(Path.GetFullPath(mapPath)) ?? Directory.GetCurrentDirectory();
             var touchedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new ApplyResult();
             var textStyleGuard = TextStyleGuard.Create(xmlDocuments);
@@ -184,7 +185,7 @@ namespace OpenHwp.Automation.Cli
                     break;
                 }
 
-                ApplyPackageCellWrites(xmlDocuments, touchedParts, cell, textStyleGuard, result, maxOperations);
+                ApplyPackageCellWrites(entries, xmlDocuments, touchedParts, cell, mapDirectory, textStyleGuard, result, maxOperations);
             }
 
             foreach (var anchor in OrderPackageAnchorsForSafeWrites(mapDocument.Descendants("anchor")))
@@ -194,7 +195,7 @@ namespace OpenHwp.Automation.Cli
                     break;
                 }
 
-                ApplyPackageAnchorWrites(xmlDocuments, touchedParts, anchor, textStyleGuard, result, maxOperations);
+                ApplyPackageAnchorWrites(entries, xmlDocuments, touchedParts, anchor, mapDirectory, textStyleGuard, result, maxOperations);
             }
 
             foreach (var partPath in touchedParts)
@@ -1012,7 +1013,15 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static void ApplyPackageCellWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement cell, TextStyleGuard textStyleGuard, ApplyResult result, int maxOperations)
+        private static void ApplyPackageCellWrites(
+            IDictionary<string, byte[]> packageEntries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement cell,
+            string mapDirectory,
+            TextStyleGuard textStyleGuard,
+            ApplyResult result,
+            int maxOperations)
         {
             var id = GetString(cell, "id");
             var target = string.Format(
@@ -1076,13 +1085,35 @@ namespace OpenHwp.Automation.Cli
                     return;
                 }
 
-                result.SkippedUnsafe++;
-                Console.WriteLine("skip package cell image write: id={0}", GetString(cell, "id"));
-                RecordApplyOperation(result, "cell", id, target, "SKIPPED", "package mode does not support image writes; use HWP COM apply-form-map");
+                var resolvedPath = ResolveRelativePath(mapDirectory, GetString(writeImage, "path"));
+                var width = GetInt(writeImage, "width", 200);
+                var height = GetInt(writeImage, "height", 200);
+                var clearCell = GetBool(writeImage, "clearCell", true);
+                string reason;
+                if (TryApplyPackageCellImage(packageEntries, xmlDocuments, touchedParts, cell, resolvedPath, width, height, clearCell, textStyleGuard, out reason))
+                {
+                    result.Applied++;
+                    Console.WriteLine("package insert cell image: id={0}, path={1}", GetString(cell, "id"), resolvedPath);
+                    RecordApplyOperation(result, "cell", id, target, "APPLIED", reason);
+                }
+                else
+                {
+                    result.Failed++;
+                    Console.WriteLine("package insert cell image failed: id={0}, reason={1}", GetString(cell, "id"), reason);
+                    RecordApplyOperation(result, "cell", id, target, "FAILED", reason);
+                }
             }
         }
 
-        private static void ApplyPackageAnchorWrites(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement anchor, TextStyleGuard textStyleGuard, ApplyResult result, int maxOperations)
+        private static void ApplyPackageAnchorWrites(
+            IDictionary<string, byte[]> packageEntries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement anchor,
+            string mapDirectory,
+            TextStyleGuard textStyleGuard,
+            ApplyResult result,
+            int maxOperations)
         {
             var id = GetString(anchor, "id");
             var currentText = (anchor.Element("currentText") == null ? string.Empty : anchor.Element("currentText").Value).Trim();
@@ -1146,9 +1177,23 @@ namespace OpenHwp.Automation.Cli
                     return;
                 }
 
-                result.SkippedUnsafe++;
-                Console.WriteLine("skip package anchor image write: id={0}", GetString(anchor, "id"));
-                RecordApplyOperation(result, "anchor", id, target, "SKIPPED", "package mode does not support image writes; use HWP COM apply-form-map");
+                var resolvedPath = ResolveRelativePath(mapDirectory, GetString(writeImage, "path"));
+                var width = GetInt(writeImage, "width", 200);
+                var height = GetInt(writeImage, "height", 200);
+                var removeAnchorText = GetBool(writeImage, "removeAnchorText", false);
+                string reason;
+                if (TryApplyPackageAnchorImage(packageEntries, xmlDocuments, touchedParts, anchor, resolvedPath, width, height, removeAnchorText, out reason))
+                {
+                    result.Applied++;
+                    Console.WriteLine("package insert anchor image: id={0}, path={1}", GetString(anchor, "id"), resolvedPath);
+                    RecordApplyOperation(result, "anchor", id, target, "APPLIED", reason);
+                }
+                else
+                {
+                    result.Failed++;
+                    Console.WriteLine("package insert anchor image failed: id={0}, reason={1}", GetString(anchor, "id"), reason);
+                    RecordApplyOperation(result, "anchor", id, target, "FAILED", reason);
+                }
             }
         }
 
@@ -1223,6 +1268,118 @@ namespace OpenHwp.Automation.Cli
 
             touchedParts.Add(partPath);
             return true;
+        }
+
+        private static bool TryApplyPackageCellImage(
+            IDictionary<string, byte[]> packageEntries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement mapCell,
+            string imagePath,
+            int width,
+            int height,
+            bool clearCell,
+            TextStyleGuard textStyleGuard,
+            out string reason)
+        {
+            var partPath = ResolveMapPartPath(mapCell);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map cell does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement table;
+            if (!TryResolvePackageTable(document, mapCell, out table, out reason))
+            {
+                return false;
+            }
+
+            XElement targetCell;
+            if (!TryResolvePackageTableCell(table, mapCell, out targetCell, out reason))
+            {
+                return false;
+            }
+
+            var paragraph = GetWritableCellParagraph(targetCell);
+            if (paragraph == null)
+            {
+                reason = "cell has no non-nested writable paragraph";
+                return false;
+            }
+
+            if (clearCell)
+            {
+                int repairedRuns;
+                if (!TrySetParagraphText(paragraph, string.Empty, textStyleGuard, out reason, out repairedRuns))
+                {
+                    return false;
+                }
+            }
+
+            return HwpxPackageImageInserter.TryInsertImageInParagraph(
+                packageEntries,
+                xmlDocuments,
+                touchedParts,
+                partPath,
+                paragraph,
+                imagePath,
+                width,
+                height,
+                out reason);
+        }
+
+        private static bool TryApplyPackageAnchorImage(
+            IDictionary<string, byte[]> packageEntries,
+            IDictionary<string, XDocument> xmlDocuments,
+            ISet<string> touchedParts,
+            XElement mapAnchor,
+            string imagePath,
+            int width,
+            int height,
+            bool removeAnchorText,
+            out string reason)
+        {
+            var partPath = ResolveMapPartPath(mapAnchor);
+            if (string.IsNullOrWhiteSpace(partPath))
+            {
+                reason = "map anchor does not include partPath";
+                return false;
+            }
+
+            XDocument document;
+            if (!xmlDocuments.TryGetValue(partPath, out document))
+            {
+                reason = "package part was not found: " + partPath;
+                return false;
+            }
+
+            XElement paragraph;
+            if (!TryResolvePackageAnchorParagraph(document, mapAnchor, out paragraph, out reason))
+            {
+                return false;
+            }
+
+            var currentText = NormalizeText(mapAnchor.Element("currentText") == null ? string.Empty : mapAnchor.Element("currentText").Value);
+            return HwpxPackageImageInserter.TryInsertImageAtParagraph(
+                packageEntries,
+                xmlDocuments,
+                touchedParts,
+                partPath,
+                paragraph,
+                currentText,
+                imagePath,
+                width,
+                height,
+                removeAnchorText,
+                out reason);
         }
 
         private static string ResolveMapPartPath(XElement mapElement)

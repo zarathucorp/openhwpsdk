@@ -93,7 +93,7 @@ Markdown 내용을 HWPX 템플릿으로 옮기고, HWPX 레이아웃 보존 여�
 
 Existing form templates should be filled through cell/cursor commands, then checked with `validate-layout`.
 
-Template HWPX files can first be mapped from the real package XML, then filled through HWP automation or text-only package mode:
+Template HWPX files can first be mapped from the real package XML, then filled through HWP automation or package mode:
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe extract-form-map C:\temp\template.hwpx C:\temp\template-form-map.xml
@@ -102,7 +102,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible appl
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package C:\temp\template.hwpx C:\temp\template-form-map.xml C:\temp\filled-package.hwpx --report C:\temp\filled-package-apply.md
 ```
 
-Edit only the generated map's `writeText` and `writeImage` elements. The map records the full HWPX package structure (`content.hpf`, manifest/spine, XML parts, previews, metadata entries) and marks write candidates from every XML part that contains HWP paragraph/table text. It is merge/nested-table aware: table grids are reconstructed from `cellAddr` plus `cellSpan`, and each cell's `currentText` excludes nested table text. Use `probe-form-map` before HWP-backed writing to confirm every mapped cell/anchor can be selected in HWP. Use `apply-form-map --package` for text-only writes; generic package map image writes are still skipped and should use the HWP-backed path when editor behavior is required. `--report` writes apply attempted/applied/failed/skipped details for both COM and package modes; package-mode layout validation is written next to it as `*.layout.md`. Package anchor writes are applied from the end of each part to reduce repeated-anchor index drift.
+Edit only the generated map's `writeText` and `writeImage` elements. The map records the full HWPX package structure (`content.hpf`, manifest/spine, XML parts, previews, metadata entries) and marks write candidates from every XML part that contains HWP paragraph/table text. It is merge/nested-table aware: table grids are reconstructed from `cellAddr` plus `cellSpan`, and each cell's `currentText` excludes nested table text. Use `probe-form-map` before HWP-backed writing to confirm every mapped cell/anchor can be selected in HWP. Use `apply-form-map --package` for COM-free text writes and package-level image embedding; use the HWP-backed path when editor-backed behavior is required. `--report` writes apply attempted/applied/failed/skipped details for both COM and package modes; package-mode layout validation is written next to it as `*.layout.md`. Package anchor writes are applied from the end of each part to reduce repeated-anchor index drift.
 
 For the supported startup R&D submission profile, use the dedicated profile command:
 
