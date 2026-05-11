@@ -93,6 +93,7 @@ namespace OpenHwp.Automation.Cli
             AppendHeaderFooterInventory(builder, summary);
             AppendFieldFormInventory(builder, summary);
             AppendReferenceInventory(builder, summary);
+            AppendNoteInventory(builder, summary);
 
             builder.AppendLine();
             builder.AppendLine("## Missing Corpus Signals");
@@ -363,6 +364,39 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static void AppendNoteInventory(StringBuilder builder, ScanSummary summary)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.NoteItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("## Note Inventory");
+            builder.AppendLine();
+            builder.AppendLine("| file | part | kind | paragraphs | tables | text |");
+            builder.AppendLine("| --- | --- | --- | ---: | ---: | --- |");
+            foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal))
+            {
+                builder.Append("| ");
+                builder.Append(EscapeMarkdown(Path.GetFileName(row.File.Path)));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.PartPath));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Kind));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Paragraphs.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Tables.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(Truncate(row.Detail.Text, 80)));
+                builder.AppendLine(" |");
+            }
+        }
+
         private static IList<string> ResolveHwpxFiles(string fullPath)
         {
             if (File.Exists(fullPath))
@@ -472,10 +506,7 @@ namespace OpenHwp.Automation.Cli
                         AddFieldFormDetail(path, element, result, "comboBox", "comboBoxes", "formObjects");
                         break;
                     case "comment":
-                        if (IsAuthoringContentPart(path) || IsHwpParagraphElement(element))
-                        {
-                            result.Increment("comments");
-                        }
+                        AddNoteDetail(path, element, result, "comment", "comments");
                         break;
                     case "paraPr":
                         result.Increment("paragraphStyles");
@@ -514,10 +545,10 @@ namespace OpenHwp.Automation.Cli
                         }
                         break;
                     case "footNote":
-                        result.Increment("footnotes");
+                        AddNoteDetail(path, element, result, "footnote", "footnotes");
                         break;
                     case "endNote":
-                        result.Increment("endnotes");
+                        AddNoteDetail(path, element, result, "endnote", "endnotes");
                         break;
                     case "hyperlink":
                     case "hyplnk":
@@ -528,7 +559,7 @@ namespace OpenHwp.Automation.Cli
                         AddReferenceDetail(path, element, result, "indexMarker", "indexMarkers");
                         break;
                     case "memo":
-                        result.Increment("memos");
+                        AddNoteDetail(path, element, result, "memo", "memos");
                         break;
                     case "equation":
                         result.Increment("equations");
@@ -669,6 +700,36 @@ namespace OpenHwp.Automation.Cli
         }
 
         private static bool IncrementAuthoringReferenceSignal(string path, XElement element, FileScanResult result, params string[] countNames)
+        {
+            if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
+            {
+                return false;
+            }
+
+            foreach (var name in countNames)
+            {
+                result.Increment(name);
+            }
+
+            return true;
+        }
+
+        private static void AddNoteDetail(string path, XElement element, FileScanResult result, string kind, params string[] countNames)
+        {
+            if (!IncrementAuthoringNoteSignal(path, element, result, countNames))
+            {
+                return;
+            }
+
+            result.NoteItems.Add(new NoteDetail(
+                NormalizePackagePath(path),
+                kind,
+                element.Descendants(Hp + "p").Count(),
+                element.Descendants(Hp + "tbl").Count(),
+                string.Join(" ", element.Descendants(Hp + "t").Select(item => item.Value).Where(item => !string.IsNullOrWhiteSpace(item)).ToArray())));
+        }
+
+        private static bool IncrementAuthoringNoteSignal(string path, XElement element, FileScanResult result, params string[] countNames)
         {
             if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
             {
@@ -954,6 +1015,7 @@ namespace OpenHwp.Automation.Cli
                 HeaderFooterItems = new List<HeaderFooterDetail>();
                 FieldFormItems = new List<FieldFormDetail>();
                 ReferenceItems = new List<ReferenceDetail>();
+                NoteItems = new List<NoteDetail>();
                 PackageError = string.Empty;
             }
 
@@ -970,6 +1032,8 @@ namespace OpenHwp.Automation.Cli
             public IList<FieldFormDetail> FieldFormItems { get; private set; }
 
             public IList<ReferenceDetail> ReferenceItems { get; private set; }
+
+            public IList<NoteDetail> NoteItems { get; private set; }
 
             public string PackageError { get; set; }
 
@@ -1063,6 +1127,28 @@ namespace OpenHwp.Automation.Cli
             public string Kind { get; private set; }
 
             public string Attributes { get; private set; }
+
+            public string Text { get; private set; }
+        }
+
+        internal sealed class NoteDetail
+        {
+            public NoteDetail(string partPath, string kind, int paragraphs, int tables, string text)
+            {
+                PartPath = partPath;
+                Kind = kind;
+                Paragraphs = paragraphs;
+                Tables = tables;
+                Text = text ?? string.Empty;
+            }
+
+            public string PartPath { get; private set; }
+
+            public string Kind { get; private set; }
+
+            public int Paragraphs { get; private set; }
+
+            public int Tables { get; private set; }
 
             public string Text { get; private set; }
         }
