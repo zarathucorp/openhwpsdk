@@ -130,6 +130,8 @@ namespace OpenHwp.Automation.Cli
                     return TableSplitPackage(commandArgs);
                 case "table-cell-style-package":
                     return TableCellStylePackage(commandArgs);
+                case "table-cell-align-package":
+                    return TableCellAlignPackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -1618,6 +1620,147 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("affected_cells=" + result.AffectedCells.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("affected_cell_addresses=" + result.AffectedCellAddresses);
             Console.WriteLine("previous_border_fill_ids=" + result.PreviousBorderFillIds);
+            Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
+        private static int TableCellAlignPackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("  Horizontal alignment clones the referenced paraPr in header.xml and points affected cell paragraphs at the clone.");
+                return 1;
+            }
+
+            var options = new TableCellAlignOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0",
+                TableIndex = -1,
+                Row = -1,
+                Column = -1,
+                RowSpan = 1,
+                ColumnSpan = 1
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--table-index", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.TableIndex = ParseIntArgument(RequireValue(args, ref index, "--table-index"), "table-index");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--row", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Row = ParseIntArgument(RequireValue(args, ref index, "--row"), "row");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--column", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Column = ParseIntArgument(RequireValue(args, ref index, "--column"), "column");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--row-span", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.RowSpan = ParseIntArgument(RequireValue(args, ref index, "--row-span"), "row-span");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--col-span", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[index], "--column-span", StringComparison.OrdinalIgnoreCase))
+                {
+                    var flagName = args[index];
+                    options.ColumnSpan = ParseIntArgument(RequireValue(args, ref index, flagName), flagName.TrimStart('-'));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--horizontal", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Horizontal = RequireValue(args, ref index, "--horizontal");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--vertical", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Vertical = RequireValue(args, ref index, "--vertical");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.TableIndex < 0)
+            {
+                Console.Error.WriteLine("--table-index is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Row < 0)
+            {
+                Console.Error.WriteLine("--row is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Column < 0)
+            {
+                Console.Error.WriteLine("--column is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.RowSpan <= 0 || options.ColumnSpan <= 0)
+            {
+                Console.Error.WriteLine("--row-span and --col-span must be greater than zero.");
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(options.Horizontal) && string.IsNullOrWhiteSpace(options.Vertical))
+            {
+                Console.Error.WriteLine("--horizontal or --vertical is required.");
+                return 1;
+            }
+
+            var result = HwpxTableCellAlignEditor.Apply(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("table_index=" + result.TableIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("row=" + result.Row.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("column=" + result.Column.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("row_span=" + result.RowSpan.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("column_span=" + result.ColumnSpan.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("horizontal=" + result.Horizontal);
+            Console.WriteLine("vertical=" + result.Vertical);
+            Console.WriteLine("affected_cells=" + result.AffectedCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("affected_cell_addresses=" + result.AffectedCellAddresses);
+            Console.WriteLine("horizontal_paragraphs=" + result.HorizontalParagraphs.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("vertical_cells=" + result.VerticalCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("cloned_para_pr_count=" + result.ClonedParaPrCount.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
@@ -3952,6 +4095,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("    --row and --column are the zero-based top-left address of the merged cell to split.");
             Console.WriteLine("  table-cell-style-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --border-fill-id id [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
             Console.WriteLine("    Applies an existing header.xml borderFill id to cells intersecting the selected zero-based range.");
+            Console.WriteLine("  table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("    Applies direct cell paragraph horizontal alignment and/or cell subList vertical alignment.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");

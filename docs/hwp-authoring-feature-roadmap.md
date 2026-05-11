@@ -200,6 +200,8 @@
 - 병합 산출물을 다시 split하는 왕복 smoke에서 physical cell 9 -> 12, row/column 3x4 유지, layout/content pass, 직접 XML 기준 네 셀 `cellSpan=1x1` 복원을 확인했다.
 - `table-cell-style-package` 명령으로 기존 `Contents/header.xml`에 정의된 borderFill ID를 셀 또는 직사각형 범위에 적용한다. 선택 범위와 span이 교차하는 셀을 대상으로 하므로 병합셀 내부 covered coordinate를 선택해도 top-left 병합셀 스타일이 바뀐다.
 - 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀 borderFillIDRef를 16 -> 32로 바꾸고 layout pass와 직접 XML 검증을 확인했다. 존재하지 않는 borderFill ID 9999는 적용 전에 실패한다.
+- `table-cell-align-package` 명령으로 셀 내부 문단의 가로 정렬과 셀 세로 정렬을 변경한다. 가로 정렬은 공유 `paraPr`를 직접 수정하지 않고 `Contents/header.xml`에서 clone을 만들어 해당 셀 문단만 새 `paraPrIDRef`를 보게 하며, 세로 정렬은 `hp:subList@vertAlign`을 변경한다.
+- 실제 제출서식 smoke에서 row 1/column 1 셀을 `horizontal=RIGHT`, `vertical=BOTTOM`으로 변경했고, 직접 XML에서 새 `paraPrIDRef=203`, header align RIGHT, `paraProperties itemCnt=204`, subList vertAlign BOTTOM을 확인했다. 병합셀 covered coordinate 선택도 top-left 병합셀 정렬로 적용된다.
 
 개발 단위:
 
@@ -221,7 +223,7 @@
 4. table style operations
    - border/background. (partially implemented: `table-cell-style-package` existing borderFill apply)
    - diagonal line.
-   - paragraph alignment, vertical alignment.
+   - paragraph alignment, vertical alignment. (implemented: `table-cell-align-package`)
 
 5. formulas
    - 쉬운 계산식/블록 계산식은 우선 inventory와 COM smoke test.

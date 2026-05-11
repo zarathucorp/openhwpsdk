@@ -161,6 +161,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-column-p
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-merge-package "<template.hwpx>" "test\out\table_merged.hwpx" --table-index 4 --row 1 --column 1 --row-span 2 --col-span 2 --text "Merged cell" --report "test\out\table_merged_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-split-package "test\out\table_merged.hwpx" "test\out\table_split.hwpx" --table-index 4 --row 1 --column 1 --text "A|B;C|D" --report "test\out\table_split_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-style-package "<template.hwpx>" "test\out\styled_cell.hwpx" --table-index 4 --row 1 --column 1 --border-fill-id 32 --report "test\out\styled_cell_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-align-package "<template.hwpx>" "test\out\aligned_cell.hwpx" --table-index 4 --row 1 --column 1 --horizontal right --vertical bottom --report "test\out\aligned_cell_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "test\out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
 ```
 
@@ -170,6 +171,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill
 `table-merge-package` merges a rectangular region in a simple unmerged top-level text-cell table in `section0`. `--row` and `--column` are the zero-based top-left cell, `--row-span` and `--col-span` define the rectangle, and omitted `--text` combines the covered cell text in row-major order. Confirm the result with content validation plus direct XML/grid inspection because the table row and column counts intentionally stay unchanged.
 `table-split-package` splits an existing merged top-left cell back into 1x1 cells in the same safe `section0` subset. It preserves row/column counts, inserts the covered cells, samples surrounding sizes when available, and leaves the original merged text in the top-left cell unless `--text` supplies a replacement matrix. Confirm with content validation plus direct XML/grid inspection because layout validation may not flag merge/split shape changes when row and column counts are unchanged.
 `table-cell-style-package` applies an existing `borderFillIDRef` from `Contents/header.xml` to one cell or a rectangular range. It validates that the border fill ID exists before writing, applies to intersecting merged cells, and should be checked with direct XML/grid inspection because structural layout counts remain unchanged.
+`table-cell-align-package` applies horizontal paragraph alignment and/or cell vertical alignment to one cell or a rectangular range. Horizontal alignment creates a cloned `paraPr` in `Contents/header.xml` instead of mutating the shared source style, then retargets affected direct cell paragraphs; vertical alignment updates `hp:subList@vertAlign`. Validate with direct XML inspection of both `section0.xml` and `header.xml`.
 
 Copy a whole table or control from a reference HWP/HWPX document through HWP's editor-backed clipboard path:
 
