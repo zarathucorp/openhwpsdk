@@ -90,6 +90,7 @@ namespace OpenHwp.Automation.Cli
             AppendFeatureGroup(builder, summary, "Shapes", new[] { "drawingShapes", "lines", "rectangles", "ellipses", "arcs", "polygons", "curves", "containers", "groups", "textBoxes", "textArt", "shapeObjects" });
             AppendFeatureGroup(builder, summary, "References", new[] { "captions", "bookmarks", "crossReferences", "hyperlinks", "tocMarkers", "indexMarkers", "autoNumbers", "pageNumbers" });
             AppendFeatureGroup(builder, summary, "Embedded Objects", new[] { "equations", "charts", "oleObjects", "videos", "sounds" });
+            AppendHeaderFooterInventory(builder, summary);
 
             builder.AppendLine();
             builder.AppendLine("## Missing Corpus Signals");
@@ -230,6 +231,47 @@ namespace OpenHwp.Automation.Cli
             if (featureNames.All(name => summary.Count(name) == 0))
             {
                 missing.Add(label + " fixture is missing or not detected");
+            }
+        }
+
+        private static void AppendHeaderFooterInventory(StringBuilder builder, ScanSummary summary)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.HeaderFooterItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("## Header/Footer Inventory");
+            builder.AppendLine();
+            builder.AppendLine("| file | part | kind | role | ref | paragraphs | tables | pictures | shapes | text |");
+            builder.AppendLine("| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |");
+            foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal))
+            {
+                builder.Append("| ");
+                builder.Append(EscapeMarkdown(Path.GetFileName(row.File.Path)));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.PartPath));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Kind));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Role));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Reference));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Paragraphs.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Tables.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Pictures.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(row.Detail.Shapes.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(Truncate(row.Detail.Text, 80)));
+                builder.AppendLine(" |");
             }
         }
 
@@ -377,10 +419,16 @@ namespace OpenHwp.Automation.Cli
                         result.Increment("formObjects");
                         break;
                     case "header":
-                        IncrementHeaderOrFooter(path, element, result, "pageHeaders", "pageHeaderReferences");
+                        if (IsHwpParagraphElement(element))
+                        {
+                            IncrementHeaderOrFooter(path, element, result, "pageHeaders", "pageHeaderReferences");
+                        }
                         break;
                     case "footer":
-                        IncrementHeaderOrFooter(path, element, result, "pageFooters", "pageFooterReferences");
+                        if (IsHwpParagraphElement(element))
+                        {
+                            IncrementHeaderOrFooter(path, element, result, "pageFooters", "pageFooterReferences");
+                        }
                         break;
                     case "footNote":
                         result.Increment("footnotes");
@@ -502,11 +550,52 @@ namespace OpenHwp.Automation.Cli
             if (IsHeaderOrFooterBody(path, element, bodyCountName))
             {
                 result.Increment(bodyCountName);
+                result.HeaderFooterItems.Add(CreateHeaderFooterDetail(path, element, bodyCountName == "pageHeaders" ? "header" : "footer", "body"));
             }
             else
             {
                 result.Increment(referenceCountName);
+                result.HeaderFooterItems.Add(CreateHeaderFooterDetail(path, element, bodyCountName == "pageHeaders" ? "header" : "footer", "reference"));
             }
+        }
+
+        private static HeaderFooterDetail CreateHeaderFooterDetail(string path, XElement element, string kind, string role)
+        {
+            return new HeaderFooterDetail(
+                NormalizePackagePath(path),
+                kind,
+                role,
+                element.Descendants(Hp + "p").Count(),
+                element.Descendants(Hp + "tbl").Count(),
+                element.Descendants(Hp + "pic").Count(),
+                CountDrawingShapeElements(path, element),
+                ExtractHeaderFooterReference(element),
+                string.Join(" ", element.Descendants(Hp + "t").Select(item => item.Value).Where(item => !string.IsNullOrWhiteSpace(item)).ToArray()));
+        }
+
+        private static string ExtractHeaderFooterReference(XElement element)
+        {
+            var parts = new List<string>();
+            foreach (var name in new[] { "idRef", "id", "name", "applyPageType", "textFlow" })
+            {
+                var attribute = element.Attribute(name);
+                if (attribute != null && !string.IsNullOrWhiteSpace(attribute.Value))
+                {
+                    parts.Add(name + "=" + attribute.Value);
+                }
+            }
+
+            return string.Join("; ", parts.ToArray());
+        }
+
+        private static int CountDrawingShapeElements(string path, XElement element)
+        {
+            if (!IsAuthoringContentPart(path))
+            {
+                return 0;
+            }
+
+            return element.Descendants().Count(item => IsHwpParagraphElement(item) && IsDrawingShapeElement(item));
         }
 
         private static bool IsHeaderOrFooterBody(string path, XElement element, string bodyCountName)
@@ -588,6 +677,28 @@ namespace OpenHwp.Automation.Cli
             return element.Name.NamespaceName == Hp.NamespaceName;
         }
 
+        private static bool IsDrawingShapeElement(XElement element)
+        {
+            switch (element.Name.LocalName)
+            {
+                case "line":
+                case "rect":
+                case "ellipse":
+                case "arc":
+                case "polygon":
+                case "curve":
+                case "container":
+                case "group":
+                case "grp":
+                case "textBox":
+                case "textart":
+                case "shapeObject":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static bool IsImageBinDataEntry(string path)
         {
             var normalized = NormalizePackagePath(path);
@@ -633,6 +744,16 @@ namespace OpenHwp.Automation.Cli
         private static string EscapeMarkdown(string value)
         {
             return (value ?? string.Empty).Replace("\\", "\\\\").Replace("|", "\\|").Replace("\r", " ").Replace("\n", " ");
+        }
+
+        private static string Truncate(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            {
+                return value ?? string.Empty;
+            }
+
+            return value.Substring(0, maxLength - 3) + "...";
         }
 
         internal sealed class ScanSummary
@@ -687,6 +808,7 @@ namespace OpenHwp.Automation.Cli
                 Path = path;
                 Counts = new Dictionary<string, int>(StringComparer.Ordinal);
                 XmlErrors = new List<string>();
+                HeaderFooterItems = new List<HeaderFooterDetail>();
                 PackageError = string.Empty;
             }
 
@@ -697,6 +819,8 @@ namespace OpenHwp.Automation.Cli
             public int XmlParseErrors { get; set; }
 
             public IList<string> XmlErrors { get; private set; }
+
+            public IList<HeaderFooterDetail> HeaderFooterItems { get; private set; }
 
             public string PackageError { get; set; }
 
@@ -720,6 +844,40 @@ namespace OpenHwp.Automation.Cli
 
                 Counts[name] = Count(name) + value;
             }
+        }
+
+        internal sealed class HeaderFooterDetail
+        {
+            public HeaderFooterDetail(string partPath, string kind, string role, int paragraphs, int tables, int pictures, int shapes, string reference, string text)
+            {
+                PartPath = partPath;
+                Kind = kind;
+                Role = role;
+                Paragraphs = paragraphs;
+                Tables = tables;
+                Pictures = pictures;
+                Shapes = shapes;
+                Reference = reference ?? string.Empty;
+                Text = text ?? string.Empty;
+            }
+
+            public string PartPath { get; private set; }
+
+            public string Kind { get; private set; }
+
+            public string Role { get; private set; }
+
+            public int Paragraphs { get; private set; }
+
+            public int Tables { get; private set; }
+
+            public int Pictures { get; private set; }
+
+            public int Shapes { get; private set; }
+
+            public string Reference { get; private set; }
+
+            public string Text { get; private set; }
         }
     }
 }
