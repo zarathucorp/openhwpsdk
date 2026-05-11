@@ -204,6 +204,8 @@
 - 실제 제출서식 smoke에서 row 1/column 1 셀을 `horizontal=RIGHT`, `vertical=BOTTOM`으로 변경했고, 직접 XML에서 새 `paraPrIDRef=203`, header align RIGHT, `paraProperties itemCnt=204`, subList vertAlign BOTTOM을 확인했다. 병합셀 covered coordinate 선택도 top-left 병합셀 정렬로 적용된다.
 - `table-cell-diagonal-package` 명령으로 셀 대각선을 추가/변경/삭제한다. 기존 `borderFill`을 직접 바꾸지 않고 선택 셀의 현재 `borderFill`을 clone한 뒤 `hh:slash`/`hh:backSlash`와 `hh:diagonal` 폭/색상만 갱신하고 해당 셀만 새 ID로 retarget한다.
 - 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀에 `direction=both`, `width=0.15 mm`, `color=#000000`을 적용했고, layout pass와 직접 XML 기준 `slash=CENTER`, `backSlash=CENTER`, cloned borderFill ID 적용을 확인했다. 병합셀 covered coordinate 선택은 top-left 병합셀의 대각선으로 적용된다.
+- `table-cell-size-package` 명령으로 단순 unmerged top-level 표의 열 너비와 행 높이를 균등화한다. 전체 표 폭/높이는 유지하고 기존 `hp:cellSz` 값을 열/행 단위로 재분배하며, 병합/중첩/sparse/주소 불일치 표는 거부한다.
+- 실제 제출서식 smoke에서 top-level table 11의 column widths `9788,20451,6361,10513`을 `11778,11778,11778,11779`로, row heights `2403,1363,1363`을 `1709,1709,1711`로 균등화했고, 표 전체 크기 `47113x5129`, row/column count 3x4, layout pass를 확인했다.
 
 개발 단위:
 
@@ -214,7 +216,7 @@
 
 2. row/column operations
    - 줄/칸 추가/삭제.
-   - 셀 높이/너비 균등화.
+   - 셀 높이/너비 균등화. (implemented: `table-cell-size-package`)
    - 기존 table model의 `cellAddr`/`cellSpan` 재계산.
 
 3. merge/split operations

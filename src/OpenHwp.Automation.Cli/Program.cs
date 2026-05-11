@@ -134,6 +134,8 @@ namespace OpenHwp.Automation.Cli
                     return TableCellAlignPackage(commandArgs);
                 case "table-cell-diagonal-package":
                     return TableCellDiagonalPackage(commandArgs);
+                case "table-cell-size-package":
+                    return TableCellSizePackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -1922,6 +1924,103 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
+        private static int TableCellSizePackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("  Equalizes column widths and/or row heights in a simple top-level table while preserving total table size.");
+                return 1;
+            }
+
+            var options = new TableCellSizeOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0",
+                TableIndex = -1
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--table-index", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.TableIndex = ParseIntArgument(RequireValue(args, ref index, "--table-index"), "table-index");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--equalize-widths", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[index], "--equal-widths", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.EqualizeWidths = true;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--equalize-heights", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[index], "--equal-heights", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.EqualizeHeights = true;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.TableIndex < 0)
+            {
+                Console.Error.WriteLine("--table-index is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (!options.EqualizeWidths && !options.EqualizeHeights)
+            {
+                Console.Error.WriteLine("At least one of --equalize-widths or --equalize-heights is required.");
+                return 1;
+            }
+
+            var result = HwpxTableCellSizeEditor.Apply(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("table_index=" + result.TableIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("equalize_widths=" + BoolText(result.EqualizeWidths));
+            Console.WriteLine("equalize_heights=" + BoolText(result.EqualizeHeights));
+            Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("physical_cells=" + result.PhysicalCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_table_width=" + result.OriginalTableWidth.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_table_width=" + result.NewTableWidth.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_table_height=" + result.OriginalTableHeight.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_table_height=" + result.NewTableHeight.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_column_widths=" + result.OriginalColumnWidths);
+            Console.WriteLine("new_column_widths=" + result.NewColumnWidths);
+            Console.WriteLine("original_row_heights=" + result.OriginalRowHeights);
+            Console.WriteLine("new_row_heights=" + result.NewRowHeights);
+            Console.WriteLine("width_cells_changed=" + result.WidthCellsChanged.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("height_cells_changed=" + result.HeightCellsChanged.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("note=" + result.Note);
             if (!string.IsNullOrWhiteSpace(options.ReportPath))
             {
@@ -4256,6 +4355,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("    Applies direct cell paragraph horizontal alignment and/or cell subList vertical alignment.");
             Console.WriteLine("  table-cell-diagonal-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --direction slash|backslash|both|none [--row-span count] [--col-span count] [--width value] [--color #RRGGBB] [--base-border-fill-id id] [--section section0] [--report reportMarkdownPath]");
             Console.WriteLine("    Clones current cell borderFill definitions, changes diagonal slash/backSlash settings, and retargets affected cells.");
+            Console.WriteLine("  table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("    Equalizes column widths and/or row heights in a simple top-level table while preserving total table size.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");
