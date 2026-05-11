@@ -1345,7 +1345,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("form_objects=" + summary.Count("formObjects").ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("headers_footers=" + (summary.Count("pageHeaders") + summary.Count("pageFooters") + summary.Count("pageHeaderReferences") + summary.Count("pageFooterReferences")).ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("notes=" + (summary.Count("footnotes") + summary.Count("endnotes") + summary.Count("memos") + summary.Count("comments")).ToString(CultureInfo.InvariantCulture));
-            Console.WriteLine("references=" + (summary.Count("captions") + summary.Count("bookmarks") + summary.Count("crossReferences") + summary.Count("tocMarkers") + summary.Count("indexMarkers")).ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("references=" + (summary.Count("captions") + summary.Count("bookmarks") + summary.Count("crossReferences") + summary.Count("hyperlinks") + summary.Count("tocMarkers") + summary.Count("indexMarkers") + summary.Count("autoNumbers") + summary.Count("pageNumbers")).ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("embedded_objects=" + (summary.Count("equations") + summary.Count("charts") + summary.Count("oleObjects") + summary.Count("videos") + summary.Count("sounds")).ToString(CultureInfo.InvariantCulture));
             if (args.Length == 3)
             {

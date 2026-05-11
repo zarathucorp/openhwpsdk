@@ -78,7 +78,7 @@ namespace OpenHwp.Automation.Cli
             AppendCoverageRow(builder, "headers/footers", summary.Count("pageHeaders") + summary.Count("pageFooters") + summary.Count("pageHeaderReferences") + summary.Count("pageFooterReferences"), "inventory only", "header/footer writing and section-aware editing are not implemented");
             AppendCoverageRow(builder, "footnotes/endnotes", summary.Count("footnotes") + summary.Count("endnotes"), "inventory only", "footnote/endnote insertion and editing are not implemented");
             AppendCoverageRow(builder, "equations/charts/OLE", summary.Count("equations") + summary.Count("charts") + summary.Count("oleObjects"), "inventory only", "equation/chart/OLE insertion and editing are not implemented");
-            AppendCoverageRow(builder, "captions/bookmarks/references", summary.Count("captions") + summary.Count("bookmarks") + summary.Count("crossReferences") + summary.Count("tocMarkers") + summary.Count("indexMarkers"), "inventory only", "caption/reference insertion and refresh are not implemented");
+            AppendCoverageRow(builder, "captions/bookmarks/references", CountReferenceSignals(summary), "inventory only", "caption/reference insertion and refresh are not implemented");
             AppendCoverageRow(builder, "media", summary.Count("videos") + summary.Count("sounds"), "inventory only", "media insertion/editing is not implemented");
 
             builder.AppendLine();
@@ -92,6 +92,7 @@ namespace OpenHwp.Automation.Cli
             AppendFeatureGroup(builder, summary, "Embedded Objects", new[] { "equations", "charts", "oleObjects", "videos", "sounds" });
             AppendHeaderFooterInventory(builder, summary);
             AppendFieldFormInventory(builder, summary);
+            AppendReferenceInventory(builder, summary);
 
             builder.AppendLine();
             builder.AppendLine("## Missing Corpus Signals");
@@ -133,7 +134,7 @@ namespace OpenHwp.Automation.Cli
                 builder.Append(" | ");
                 builder.Append((file.Count("footnotes") + file.Count("endnotes") + file.Count("memos") + file.Count("comments")).ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
-                builder.Append((file.Count("captions") + file.Count("bookmarks") + file.Count("crossReferences") + file.Count("tocMarkers") + file.Count("indexMarkers")).ToString(CultureInfo.InvariantCulture));
+                builder.Append(CountReferenceSignals(file).ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
                 builder.Append((file.Count("equations") + file.Count("charts") + file.Count("oleObjects") + file.Count("videos") + file.Count("sounds")).ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
@@ -180,6 +181,30 @@ namespace OpenHwp.Automation.Cli
             builder.Append(" | ");
             builder.Append(gap);
             builder.AppendLine(" |");
+        }
+
+        private static int CountReferenceSignals(ScanSummary summary)
+        {
+            return summary.Count("captions") +
+                   summary.Count("bookmarks") +
+                   summary.Count("crossReferences") +
+                   summary.Count("hyperlinks") +
+                   summary.Count("tocMarkers") +
+                   summary.Count("indexMarkers") +
+                   summary.Count("autoNumbers") +
+                   summary.Count("pageNumbers");
+        }
+
+        private static int CountReferenceSignals(FileScanResult file)
+        {
+            return file.Count("captions") +
+                   file.Count("bookmarks") +
+                   file.Count("crossReferences") +
+                   file.Count("hyperlinks") +
+                   file.Count("tocMarkers") +
+                   file.Count("indexMarkers") +
+                   file.Count("autoNumbers") +
+                   file.Count("pageNumbers");
         }
 
         private static void AppendFeatureGroup(StringBuilder builder, ScanSummary summary, string title, IEnumerable<string> featureNames)
@@ -307,6 +332,37 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static void AppendReferenceInventory(StringBuilder builder, ScanSummary summary)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.ReferenceItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("## Reference Inventory");
+            builder.AppendLine();
+            builder.AppendLine("| file | part | kind | attrs | text |");
+            builder.AppendLine("| --- | --- | --- | --- | --- |");
+            foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal).ThenBy(item => item.Detail.Attributes, StringComparer.Ordinal))
+            {
+                builder.Append("| ");
+                builder.Append(EscapeMarkdown(Path.GetFileName(row.File.Path)));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.PartPath));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Kind));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Attributes));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(Truncate(row.Detail.Text, 80)));
+                builder.AppendLine(" |");
+            }
+        }
+
         private static IList<string> ResolveHwpxFiles(string fullPath)
         {
             if (File.Exists(fullPath))
@@ -391,17 +447,17 @@ namespace OpenHwp.Automation.Cli
                 {
                     case "autoNum":
                     case "autoNumFormat":
-                        result.Increment("autoNumbers");
+                        AddReferenceDetail(path, element, result, "autoNumber", "autoNumbers");
                         break;
                     case "bookmark":
                     case "bookMark":
                     case "bookmarkBegin":
                     case "bookMarkBegin":
-                        result.Increment("bookmarks");
+                        AddReferenceDetail(path, element, result, "bookmark", "bookmarks");
                         break;
                     case "caption":
                     case "cap":
-                        result.Increment("captions");
+                        AddReferenceDetail(path, element, result, "caption", "captions");
                         break;
                     case "charPr":
                         result.Increment("charStyles");
@@ -465,11 +521,11 @@ namespace OpenHwp.Automation.Cli
                         break;
                     case "hyperlink":
                     case "hyplnk":
-                        result.Increment("hyperlinks");
+                        AddReferenceDetail(path, element, result, "hyperlink", "hyperlinks");
                         break;
                     case "idxmark":
                     case "indexmark":
-                        result.Increment("indexMarkers");
+                        AddReferenceDetail(path, element, result, "indexMarker", "indexMarkers");
                         break;
                     case "memo":
                         result.Increment("memos");
@@ -487,7 +543,7 @@ namespace OpenHwp.Automation.Cli
                     case "pageNum":
                     case "pageNumCtrl":
                     case "pageNumFormat":
-                        result.Increment("pageNumbers");
+                        AddReferenceDetail(path, element, result, "pageNumber", "pageNumbers");
                         break;
                     case "radioBtn":
                     case "radioButton":
@@ -495,7 +551,7 @@ namespace OpenHwp.Automation.Cli
                         break;
                     case "crossRef":
                     case "crossReference":
-                        result.Increment("crossReferences");
+                        AddReferenceDetail(path, element, result, "crossReference", "crossReferences");
                         break;
                     case "scrollBar":
                     case "edit":
@@ -513,7 +569,7 @@ namespace OpenHwp.Automation.Cli
                     case "tocMark":
                     case "tocmark":
                     case "tableOfContents":
-                        result.Increment("tocMarkers");
+                        AddReferenceDetail(path, element, result, "tocMarker", "tocMarkers");
                         break;
                     case "press":
                     case "pressField":
@@ -584,6 +640,35 @@ namespace OpenHwp.Automation.Cli
         }
 
         private static bool IncrementAuthoringFieldFormSignal(string path, XElement element, FileScanResult result, params string[] countNames)
+        {
+            if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
+            {
+                return false;
+            }
+
+            foreach (var name in countNames)
+            {
+                result.Increment(name);
+            }
+
+            return true;
+        }
+
+        private static void AddReferenceDetail(string path, XElement element, FileScanResult result, string kind, params string[] countNames)
+        {
+            if (!IncrementAuthoringReferenceSignal(path, element, result, countNames))
+            {
+                return;
+            }
+
+            result.ReferenceItems.Add(new ReferenceDetail(
+                NormalizePackagePath(path),
+                kind,
+                ExtractKnownAttributes(element, new[] { "name", "id", "idRef", "target", "targetId", "number", "numType", "text" }),
+                string.Join(" ", element.Descendants(Hp + "t").Select(item => item.Value).Where(item => !string.IsNullOrWhiteSpace(item)).ToArray())));
+        }
+
+        private static bool IncrementAuthoringReferenceSignal(string path, XElement element, FileScanResult result, params string[] countNames)
         {
             if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
             {
@@ -868,6 +953,7 @@ namespace OpenHwp.Automation.Cli
                 XmlErrors = new List<string>();
                 HeaderFooterItems = new List<HeaderFooterDetail>();
                 FieldFormItems = new List<FieldFormDetail>();
+                ReferenceItems = new List<ReferenceDetail>();
                 PackageError = string.Empty;
             }
 
@@ -882,6 +968,8 @@ namespace OpenHwp.Automation.Cli
             public IList<HeaderFooterDetail> HeaderFooterItems { get; private set; }
 
             public IList<FieldFormDetail> FieldFormItems { get; private set; }
+
+            public IList<ReferenceDetail> ReferenceItems { get; private set; }
 
             public string PackageError { get; set; }
 
@@ -944,6 +1032,25 @@ namespace OpenHwp.Automation.Cli
         internal sealed class FieldFormDetail
         {
             public FieldFormDetail(string partPath, string kind, string attributes, string text)
+            {
+                PartPath = partPath;
+                Kind = kind;
+                Attributes = attributes ?? string.Empty;
+                Text = text ?? string.Empty;
+            }
+
+            public string PartPath { get; private set; }
+
+            public string Kind { get; private set; }
+
+            public string Attributes { get; private set; }
+
+            public string Text { get; private set; }
+        }
+
+        internal sealed class ReferenceDetail
+        {
+            public ReferenceDetail(string partPath, string kind, string attributes, string text)
             {
                 PartPath = partPath;
                 Kind = kind;
