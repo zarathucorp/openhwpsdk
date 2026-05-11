@@ -173,7 +173,9 @@
 - `list-fields` 명령으로 package-level field/form item과 선택적 COM `GetFieldList` 결과를 한 report에 병합한다.
 - package report는 part, kind, attrs(name/value 등), text preview를 출력한다. COM report는 raw list에서 파싱 가능한 field name, 존재 여부, 현재 text를 출력한다.
 - `press-field-form.hwpx` fixture에서 field/press/form 6개 package item을 확인했고, 실제 제출서식 smoke에서 checkbox 8개와 COM raw empty 결과를 같은 report에 남겼다.
-- 인쇄 여부, package-level field target 쓰기, press field fill은 다음 개발 단위다.
+- `extract-form-map`은 이제 `field`/`press` marker와 `checkBtn`, checkbox, radio, combo, edit control 같은 form object를 별도 `fields` section에 inventory-only target으로 출력한다.
+- smoke에서 `press-field-form.hwpx`의 field/form target 6개와 실제 제출서식의 `checkBtn` checkbox target 8개를 확인했고, `apply-form-map --package`가 해당 section을 쓰기 대상으로 오해하지 않는 것도 확인했다.
+- 인쇄 여부, package-level field writing, press field fill은 다음 개발 단위다.
 
 ### Phase 3. 표 authoring 전 범위
 

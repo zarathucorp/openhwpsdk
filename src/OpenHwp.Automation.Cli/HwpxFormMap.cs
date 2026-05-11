@@ -31,13 +31,15 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("mappingScope", "package"),
                 new XAttribute("generatedUtc", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
 
-            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes and package-level image embedding; use HWP automation when editor-backed behavior is required."));
+            root.Add(new XComment("Fill writeText or writeImage elements, then run apply-form-map. Package mode supports text writes and package-level image embedding; use HWP automation when editor-backed behavior is required. Field targets are inventory-only until field writing is explicitly implemented."));
             root.Add(BuildPackageElement(entries, xmlDocuments, writablePartNames));
 
             var tablesElement = new XElement("tables");
             var anchorsElement = new XElement("anchors");
+            var fieldsElement = new XElement("fields");
             var tableIndex = 0;
             var anchorIndex = 0;
+            var fieldIndex = 0;
             var partIndex = 0;
             var anchorOccurrences = new Dictionary<string, int>(StringComparer.Ordinal);
 
@@ -46,12 +48,20 @@ namespace OpenHwp.Automation.Cli
                 var document = xmlDocuments[partName];
                 var partRole = DeterminePartRole(partName, document);
                 var tableOrderInPart = 0;
+                var fieldOrderInPart = 0;
                 foreach (var table in document.Descendants(Hp + "tbl"))
                 {
                     var tableElement = ExtractTable(table, partName, partRole, partIndex, tableIndex, tableOrderInPart);
                     tablesElement.Add(tableElement);
                     tableIndex++;
                     tableOrderInPart++;
+                }
+
+                foreach (var field in document.Descendants().Where(IsFieldTargetElement))
+                {
+                    fieldsElement.Add(ExtractFieldTarget(field, partName, partRole, partIndex, fieldIndex, fieldOrderInPart));
+                    fieldIndex++;
+                    fieldOrderInPart++;
                 }
 
                 var standaloneParagraphOrder = 0;
@@ -87,6 +97,7 @@ namespace OpenHwp.Automation.Cli
 
             root.Add(tablesElement);
             root.Add(anchorsElement);
+            root.Add(fieldsElement);
 
             var directory = Path.GetDirectoryName(Path.GetFullPath(outputXmlPath));
             if (!string.IsNullOrWhiteSpace(directory))
@@ -818,6 +829,138 @@ namespace OpenHwp.Automation.Cli
                     new XAttribute("width", "200"),
                     new XAttribute("height", "200"),
                     new XAttribute("removeAnchorText", "false")));
+        }
+
+        private static XElement ExtractFieldTarget(
+            XElement element,
+            string partName,
+            string partRole,
+            int partIndex,
+            int fieldIndex,
+            int fieldOrderInPart)
+        {
+            var kind = NormalizeFieldKind(element.Name.LocalName);
+            var fieldElement = new XElement(
+                "field",
+                new XAttribute("id", "field-" + fieldIndex.ToString("0000", CultureInfo.InvariantCulture)),
+                new XAttribute("kind", kind),
+                new XAttribute("elementName", element.Name.LocalName),
+                new XAttribute("partPath", partName),
+                new XAttribute("partRole", partRole),
+                new XAttribute("partIndex", partIndex.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("section", InferSectionName(partName)),
+                new XAttribute("fieldIndex", fieldIndex.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("fieldOrderInPart", fieldOrderInPart.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("name", FirstNonEmpty(GetString(element, "name"), GetString(element, "fieldName"), GetString(element, "id"), GetString(element, "caption"))),
+                new XAttribute("value", GetString(element, "value")),
+                new XAttribute("type", GetString(element, "type")),
+                new XAttribute("command", GetString(element, "command")),
+                new XAttribute("writeSupported", "false"),
+                new XElement("currentText", NormalizeText(TextOf(element))),
+                new XElement("writeText", new XAttribute("enabled", "false")));
+
+            var attrs = ExtractKnownAttributes(element, new[] { "name", "caption", "id", "idRef", "type", "command", "fieldName", "value", "editable", "enabled", "printable", "tabOrder", "radioGroupName", "groupName" });
+            if (!string.IsNullOrWhiteSpace(attrs))
+            {
+                fieldElement.Add(new XElement("attrs", attrs));
+            }
+
+            return fieldElement;
+        }
+
+        private static bool IsFieldTargetElement(XElement element)
+        {
+            if (element == null || element.Name.NamespaceName != Hp.NamespaceName)
+            {
+                return false;
+            }
+
+            switch (element.Name.LocalName)
+            {
+                case "field":
+                case "fieldBegin":
+                case "formObject":
+                case "press":
+                case "pressField":
+                case "placeholder":
+                case "checkBtn":
+                case "checkBox":
+                case "radioBtn":
+                case "radioButton":
+                case "comboBox":
+                case "comboBtn":
+                case "listBox":
+                case "scrollBar":
+                case "edit":
+                case "editField":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string NormalizeFieldKind(string localName)
+        {
+            switch (localName)
+            {
+                case "field":
+                case "fieldBegin":
+                    return "field";
+                case "press":
+                case "pressField":
+                case "placeholder":
+                    return "press";
+                case "checkBtn":
+                case "checkBox":
+                    return "checkBox";
+                case "radioBtn":
+                case "radioButton":
+                    return "radioButton";
+                case "comboBtn":
+                case "comboBox":
+                case "listBox":
+                    return "comboBox";
+                case "scrollBar":
+                case "edit":
+                case "editField":
+                    return "editField";
+                default:
+                    return localName ?? string.Empty;
+            }
+        }
+
+        private static string ExtractKnownAttributes(XElement element, IEnumerable<string> names)
+        {
+            var parts = new List<string>();
+            foreach (var name in names)
+            {
+                var attribute = element.Attribute(name);
+                if (attribute != null && !string.IsNullOrWhiteSpace(attribute.Value))
+                {
+                    parts.Add(name + "=" + attribute.Value);
+                }
+            }
+
+            return string.Join("; ", parts.ToArray());
+        }
+
+        private static string InferSectionName(string partName)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(partName ?? string.Empty);
+            return string.IsNullOrWhiteSpace(fileName) ? (partName ?? string.Empty) : fileName;
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            foreach (var value in values ?? new string[0])
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static void ApplyCellWrites(HwpSession hwp, XElement cell, string mapDirectory, ApplyResult result, int maxOperations)

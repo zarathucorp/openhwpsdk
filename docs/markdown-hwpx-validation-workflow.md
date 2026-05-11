@@ -47,6 +47,7 @@ The generated XML is intentionally smaller than the source HWPX package, but it 
 - table id, HWP table index, part path, table size, border id, and merged-cell flag
 - cell id, row/column address, row/column span, width/height, style references, border id, and current text
 - paragraph anchors outside tables with part path, paragraph index, style references, duplicate occurrence, and current text
+- an inventory-only `fields` section for named fields, press fields, and form objects such as checkbox, radio, combo, and edit controls
 - empty `writeText` and `writeImage` elements for the caller to fill
 
 Before HWP-backed writes, probe every mapped position without changing the document:
@@ -90,6 +91,8 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layou
 ```
 
 Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift when identical bullet text appears many times.
+
+Field/form entries in the generated `fields` section are intentionally not applied by `apply-form-map` yet. They expose `kind`, original element name, part/section, name, value, command, text preview, and attributes for review before later named-field writing support is added.
 
 Example cell write:
 
@@ -201,7 +204,7 @@ The feature scan report separates corpus evidence from implementation support. I
 - bookmarks, captions, hyperlinks, cross references, TOC/index markers, page/auto numbers
 - footnotes, endnotes, memos, and comments
 
-Use `Missing Corpus Signals` to decide which fixture is absent. Use `list-header-footer` for a focused section-aware header/footer inventory when placement, body/reference split, `applyPageType`, or text/table/picture/shape counts matter. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body, then rerun `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion and confirm `pageNumbers` via `scan-hwpx-features`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output where the document opens in HWP. Do not treat a nonzero count as broad write support; the scan proves only that the HWPX package contains the feature.
+Use `Missing Corpus Signals` to decide which fixture is absent. Use `list-header-footer` for a focused section-aware header/footer inventory when placement, body/reference split, `applyPageType`, or text/table/picture/shape counts matter. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body, then rerun `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion and confirm `pageNumbers` via `scan-hwpx-features`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output where the document opens in HWP. Use `extract-form-map` when field/form signals need to be reviewed alongside cell and anchor targets; field entries are inventory-only and not write targets yet. Do not treat a nonzero count as broad write support; the scan proves only that the HWPX package contains the feature.
 
 Export PDFs for visual inspection:
 
