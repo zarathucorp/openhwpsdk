@@ -91,6 +91,7 @@ namespace OpenHwp.Automation.Cli
             AppendFeatureGroup(builder, summary, "References", new[] { "captions", "bookmarks", "crossReferences", "hyperlinks", "tocMarkers", "indexMarkers", "autoNumbers", "pageNumbers" });
             AppendFeatureGroup(builder, summary, "Embedded Objects", new[] { "equations", "charts", "oleObjects", "videos", "sounds" });
             AppendHeaderFooterInventory(builder, summary);
+            AppendFieldFormInventory(builder, summary);
 
             builder.AppendLine();
             builder.AppendLine("## Missing Corpus Signals");
@@ -275,6 +276,37 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private static void AppendFieldFormInventory(StringBuilder builder, ScanSummary summary)
+        {
+            var rows = summary.Files
+                .SelectMany(file => file.FieldFormItems.Select(detail => new { File = file, Detail = detail }))
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            builder.AppendLine();
+            builder.AppendLine("## Field/Form Inventory");
+            builder.AppendLine();
+            builder.AppendLine("| file | part | kind | attrs | text |");
+            builder.AppendLine("| --- | --- | --- | --- | --- |");
+            foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal).ThenBy(item => item.Detail.Attributes, StringComparer.Ordinal))
+            {
+                builder.Append("| ");
+                builder.Append(EscapeMarkdown(Path.GetFileName(row.File.Path)));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.PartPath));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Kind));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(row.Detail.Attributes));
+                builder.Append(" | ");
+                builder.Append(EscapeMarkdown(Truncate(row.Detail.Text, 80)));
+                builder.AppendLine(" |");
+            }
+        }
+
         private static IList<string> ResolveHwpxFiles(string fullPath)
         {
             if (File.Exists(fullPath))
@@ -376,14 +408,12 @@ namespace OpenHwp.Automation.Cli
                         break;
                     case "checkBtn":
                     case "checkBox":
-                        result.Increment("checkBoxes");
-                        result.Increment("formObjects");
+                        AddFieldFormDetail(path, element, result, "checkBox", "checkBoxes", "formObjects");
                         break;
                     case "comboBox":
                     case "comboBtn":
                     case "listBox":
-                        result.Increment("comboBoxes");
-                        result.Increment("formObjects");
+                        AddFieldFormDetail(path, element, result, "comboBox", "comboBoxes", "formObjects");
                         break;
                     case "comment":
                         if (IsAuthoringContentPart(path) || IsHwpParagraphElement(element))
@@ -404,19 +434,16 @@ namespace OpenHwp.Automation.Cli
                         result.Increment("controls");
                         break;
                     case "fieldBegin":
-                        result.Increment("fieldBegins");
-                        result.Increment("fieldMarkers");
+                        AddFieldFormDetail(path, element, result, "fieldBegin", "fieldBegins", "fieldMarkers");
                         break;
                     case "fieldEnd":
-                        result.Increment("fieldEnds");
-                        result.Increment("fieldMarkers");
+                        IncrementAuthoringFieldFormSignal(path, element, result, "fieldEnds", "fieldMarkers");
                         break;
                     case "field":
-                        result.Increment("fields");
-                        result.Increment("fieldMarkers");
+                        AddFieldFormDetail(path, element, result, "field", "fields", "fieldMarkers");
                         break;
                     case "formObject":
-                        result.Increment("formObjects");
+                        AddFieldFormDetail(path, element, result, "formObject", "formObjects");
                         break;
                     case "header":
                         if (IsHwpParagraphElement(element))
@@ -464,8 +491,7 @@ namespace OpenHwp.Automation.Cli
                         break;
                     case "radioBtn":
                     case "radioButton":
-                        result.Increment("radioButtons");
-                        result.Increment("formObjects");
+                        AddFieldFormDetail(path, element, result, "radioButton", "radioButtons", "formObjects");
                         break;
                     case "crossRef":
                     case "crossReference":
@@ -474,8 +500,7 @@ namespace OpenHwp.Automation.Cli
                     case "scrollBar":
                     case "edit":
                     case "editField":
-                        result.Increment("editFields");
-                        result.Increment("formObjects");
+                        AddFieldFormDetail(path, element, result, "editField", "editFields", "formObjects");
                         break;
                     case "snd":
                     case "sound":
@@ -493,8 +518,7 @@ namespace OpenHwp.Automation.Cli
                     case "press":
                     case "pressField":
                     case "placeholder":
-                        result.Increment("pressFields");
-                        result.Increment("fieldMarkers");
+                        AddFieldFormDetail(path, element, result, "pressField", "pressFields", "fieldMarkers");
                         break;
                     case "video":
                         result.Increment("videos");
@@ -545,6 +569,35 @@ namespace OpenHwp.Automation.Cli
             result.Increment("drawingShapes");
         }
 
+        private static void AddFieldFormDetail(string path, XElement element, FileScanResult result, string kind, params string[] countNames)
+        {
+            if (!IncrementAuthoringFieldFormSignal(path, element, result, countNames))
+            {
+                return;
+            }
+
+            result.FieldFormItems.Add(new FieldFormDetail(
+                NormalizePackagePath(path),
+                kind,
+                ExtractKnownAttributes(element, new[] { "name", "id", "idRef", "type", "command", "fieldName", "value" }),
+                string.Join(" ", element.Descendants(Hp + "t").Select(item => item.Value).Where(item => !string.IsNullOrWhiteSpace(item)).ToArray())));
+        }
+
+        private static bool IncrementAuthoringFieldFormSignal(string path, XElement element, FileScanResult result, params string[] countNames)
+        {
+            if (!IsAuthoringContentPart(path) || !IsHwpParagraphElement(element))
+            {
+                return false;
+            }
+
+            foreach (var name in countNames)
+            {
+                result.Increment(name);
+            }
+
+            return true;
+        }
+
         private static void IncrementHeaderOrFooter(string path, XElement element, FileScanResult result, string bodyCountName, string referenceCountName)
         {
             if (IsHeaderOrFooterBody(path, element, bodyCountName))
@@ -575,8 +628,13 @@ namespace OpenHwp.Automation.Cli
 
         private static string ExtractHeaderFooterReference(XElement element)
         {
+            return ExtractKnownAttributes(element, new[] { "idRef", "id", "name", "applyPageType", "textFlow" });
+        }
+
+        private static string ExtractKnownAttributes(XElement element, IEnumerable<string> names)
+        {
             var parts = new List<string>();
-            foreach (var name in new[] { "idRef", "id", "name", "applyPageType", "textFlow" })
+            foreach (var name in names)
             {
                 var attribute = element.Attribute(name);
                 if (attribute != null && !string.IsNullOrWhiteSpace(attribute.Value))
@@ -809,6 +867,7 @@ namespace OpenHwp.Automation.Cli
                 Counts = new Dictionary<string, int>(StringComparer.Ordinal);
                 XmlErrors = new List<string>();
                 HeaderFooterItems = new List<HeaderFooterDetail>();
+                FieldFormItems = new List<FieldFormDetail>();
                 PackageError = string.Empty;
             }
 
@@ -821,6 +880,8 @@ namespace OpenHwp.Automation.Cli
             public IList<string> XmlErrors { get; private set; }
 
             public IList<HeaderFooterDetail> HeaderFooterItems { get; private set; }
+
+            public IList<FieldFormDetail> FieldFormItems { get; private set; }
 
             public string PackageError { get; set; }
 
@@ -876,6 +937,25 @@ namespace OpenHwp.Automation.Cli
             public int Shapes { get; private set; }
 
             public string Reference { get; private set; }
+
+            public string Text { get; private set; }
+        }
+
+        internal sealed class FieldFormDetail
+        {
+            public FieldFormDetail(string partPath, string kind, string attributes, string text)
+            {
+                PartPath = partPath;
+                Kind = kind;
+                Attributes = attributes ?? string.Empty;
+                Text = text ?? string.Empty;
+            }
+
+            public string PartPath { get; private set; }
+
+            public string Kind { get; private set; }
+
+            public string Attributes { get; private set; }
 
             public string Text { get; private set; }
         }
