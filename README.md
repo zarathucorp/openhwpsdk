@@ -104,6 +104,12 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map
 
 Edit only the generated map's `writeText` and `writeImage` elements. The map records the full HWPX package structure (`content.hpf`, manifest/spine, XML parts, previews, metadata entries) and marks write candidates from every XML part that contains HWP paragraph/table text. It is merge/nested-table aware: table grids are reconstructed from `cellAddr` plus `cellSpan`, and each cell's `currentText` excludes nested table text. Use `probe-form-map` before HWP-backed writing to confirm every mapped cell/anchor can be selected in HWP. Use `apply-form-map --package` for COM-free text writes and package-level image embedding; use the HWP-backed path when editor-backed behavior is required. `--report` writes apply attempted/applied/failed/skipped details for both COM and package modes; package-mode layout validation is written next to it as `*.layout.md`. Package anchor writes are applied from the end of each part to reduce repeated-anchor index drift.
 
+Scan a file or directory of HWPX packages to see which authoring features are actually present in the corpus:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test test\out\hwpx_feature_scan.md
+```
+
 For the supported startup R&D submission profile, use the dedicated profile command:
 
 ```bat

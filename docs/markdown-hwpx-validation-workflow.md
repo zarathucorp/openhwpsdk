@@ -126,11 +126,12 @@ Page count is not a pass/fail signal. A filled application can naturally have mo
 
 Use this order instead:
 
-1. Create the candidate HWPX through profile, package, cell, or cursor-style input.
-2. Run layout validation against the template HWPX.
-3. Run content validation for Markdown artifacts, unresolved placeholders, required strings, and possible overflows.
-4. Export both template and candidate to PDF when visual checking is needed.
-5. Render or inspect representative PDF pages.
+1. Scan the corpus or candidate with `scan-hwpx-features` when the question is feature coverage.
+2. Create the candidate HWPX through profile, package, cell, or cursor-style input.
+3. Run layout validation against the template HWPX.
+4. Run content validation for Markdown artifacts, unresolved placeholders, required strings, and possible overflows.
+5. Export both template and candidate to PDF when visual checking is needed.
+6. Render or inspect representative PDF pages.
 
 `validate-layout` exits with `0` when there are no `blocking` findings. A `review-needed` verdict still requires human review, especially for intentional row growth, inserted Markdown tables, image placement, and section-level visual fit. `fill-submission-template` is stricter than `validate-layout`: it returns nonzero when missing targets, skipped or unsupported writes, unmapped Markdown images, failed image writes, or blocking layout findings remain.
 
@@ -164,6 +165,12 @@ Run content validation:
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-content "test\out\submission_filled.hwpx" "test\out\submission_filled_content_report.md" --require "required text"
+```
+
+Scan HWPX feature coverage:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test" "test\out\hwpx_feature_scan.md"
 ```
 
 Export PDFs for visual inspection:

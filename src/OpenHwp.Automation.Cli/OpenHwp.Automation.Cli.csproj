@@ -42,6 +42,7 @@
   <ItemGroup>
     <Compile Include="HwpxFormMap.cs" />
     <Compile Include="HwpxContentValidator.cs" />
+    <Compile Include="HwpxFeatureScanner.cs" />
     <Compile Include="HwpxLayoutValidator.cs" />
     <Compile Include="HwpxPackageImageInserter.cs" />
     <Compile Include="HwpxTableModel.cs" />

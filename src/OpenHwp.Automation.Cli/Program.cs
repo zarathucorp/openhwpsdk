@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -131,6 +132,8 @@ namespace OpenHwp.Automation.Cli
                     return ValidateLayout(commandArgs);
                 case "validate-content":
                     return ValidateContent(commandArgs);
+                case "scan-hwpx-features":
+                    return ScanHwpxFeatures(commandArgs);
                 case "replace-after-marker":
                     return ReplaceAfterMarker(commandArgs, visible, keepOpen);
                 case "replace-text":
@@ -1310,6 +1313,41 @@ namespace OpenHwp.Automation.Cli
             return passed ? 0 : 2;
         }
 
+        private static int ScanHwpxFeatures(string[] args)
+        {
+            if (args.Length < 2 || args.Length > 3)
+            {
+                Console.Error.WriteLine("Usage: scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
+                return 1;
+            }
+
+            var summary = HwpxFeatureScanner.Scan(args[1]);
+            if (args.Length == 3)
+            {
+                HwpxFeatureScanner.WriteMarkdown(summary, args[2]);
+            }
+
+            Console.WriteLine("input=" + summary.InputPath);
+            Console.WriteLine("files=" + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_errors=" + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("xml_parse_errors=" + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("paragraphs=" + summary.Count("paragraphs").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("tables=" + summary.Count("tables").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("table_cells=" + summary.Count("tableCells").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("merged_cells=" + summary.Count("mergedCells").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("nested_tables=" + summary.Count("nestedTables").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("pictures=" + summary.Count("pictures").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("bindata_entries=" + summary.Count("binDataEntries").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("drawing_shapes=" + summary.Count("drawingShapes").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("fields=" + (summary.Count("fields") + summary.Count("formObjects")).ToString(CultureInfo.InvariantCulture));
+            if (args.Length == 3)
+            {
+                Console.WriteLine(args[2]);
+            }
+
+            return 0;
+        }
+
         private static int DemoList()
         {
             Console.WriteLine("insertText");
@@ -1845,6 +1883,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
+            Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
