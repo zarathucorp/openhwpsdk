@@ -47,6 +47,7 @@
     <Compile Include="HwpxLayoutValidator.cs" />
     <Compile Include="HwpxPackageImageInserter.cs" />
     <Compile Include="HwpxTableCellAlignEditor.cs" />
+    <Compile Include="HwpxTableCellDiagonalEditor.cs" />
     <Compile Include="HwpxTableCellStyleEditor.cs" />
     <Compile Include="HwpxTableCreator.cs" />
     <Compile Include="HwpxTableColumnEditor.cs" />

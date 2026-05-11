@@ -152,6 +152,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-merge-pa
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-split-package C:\temp\merged.hwpx C:\temp\split.hwpx --table-index 4 --row 1 --column 1 --text "A|B;C|D" --report C:\temp\split-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-style-package C:\temp\template.hwpx C:\temp\styled-cell.hwpx --table-index 4 --row 1 --column 1 --border-fill-id 32 --report C:\temp\styled-cell-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-align-package C:\temp\template.hwpx C:\temp\aligned-cell.hwpx --table-index 4 --row 1 --column 1 --horizontal right --vertical bottom --report C:\temp\aligned-cell-report.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-diagonal-package C:\temp\template.hwpx C:\temp\diagonal-cell.hwpx --table-index 4 --row 1 --column 1 --direction both --width "0.15 mm" --color "#000000" --report C:\temp\diagonal-cell-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table C:\temp\template.hwpx C:\temp\input.md C:\temp\table-out.hwpx 8 3 1 0 1 2 5
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible table-cell-set C:\temp\template.hwpx C:\temp\cell-out.hwpx 3 1 1 "cell text"
 ```
@@ -163,6 +164,7 @@ Use `table-merge-package` for COM-free rectangular cell merge in simple top-leve
 Use `table-split-package` for COM-free split of an existing merged top-left cell back into 1x1 cells. It preserves the table grid size, samples neighboring column widths and row heights when possible, keeps existing merged text in the top-left cell when `--text` is omitted, and can distribute replacement text with the same `;`/newline row and `|` cell delimiters.
 Use `table-cell-style-package` to apply an existing `Contents/header.xml` borderFill ID to a cell or rectangular range. The selected range applies to all cells whose span intersects the zero-based `--row`/`--column` rectangle, so a covered coordinate inside a merged cell styles that merged top-left cell.
 Use `table-cell-align-package` to change direct cell paragraph horizontal alignment and/or cell vertical alignment. Horizontal alignment clones the referenced `paraPr` in `Contents/header.xml`, updates the cloned `hh:align@horizontal`, increments the paraProperties count, and points only the affected cell paragraphs at the clone; vertical alignment updates `hp:subList@vertAlign`.
+Use `table-cell-diagonal-package` to add, change, or clear cell diagonal lines without mutating shared `borderFill` definitions in place. By default it clones each affected cell's current `borderFill`, updates `hh:slash`/`hh:backSlash` to `CENTER` or `NONE`, updates the cloned `hh:diagonal` width/color, increments the borderFill count, and retargets the affected cells.
 
 Use HWP COM-backed rich copy/paste when an existing reference document already has the table or control formatting you need:
 
