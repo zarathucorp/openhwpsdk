@@ -73,13 +73,13 @@ Probe every mapped position before HWP-backed writing:
 & $cli --visible probe-form-map '<template.hwpx>' 'test\out\template_form_map.xml' 'test\out\template_form_map_probe_all.md'
 ```
 
-Apply through HWP automation when image insertion or editor-backed behavior matters:
+Apply through HWP automation when editor-backed behavior matters:
 
 ```powershell
 & $cli --visible apply-form-map '<template.hwpx>' 'test\out\template_form_map_filled.xml' 'test\out\template_form_map_applied.hwpx' --report 'test\out\template_form_map_apply.md'
 ```
 
-Use package mode only for text-only writes. Package mode reports `writeImage` entries as skipped and returns nonzero when such writes are present; use HWP COM mode for image insertion. Package anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift.
+Use package mode for COM-free text writes and package-level image embedding when editor-backed behavior is not required. Package anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift.
 
 ```powershell
 & $cli apply-form-map --package '<template.hwpx>' 'test\out\template_form_map_filled.xml' 'test\out\template_form_map_package.hwpx' --report 'test\out\template_form_map_package_apply.md'
@@ -92,15 +92,14 @@ When `--report` is supplied, both COM and package mode write attempted/applied/f
 Use the dedicated profile for the supported startup R&D form:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --markdown-table-mode text --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --image-mode package --report 'test\out\submission_filled_report.md'
 ```
 
 Current profile behavior:
 
-- Supported Markdown body tables are converted to text by default to preserve the original HWPX table count. Use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable.
-- Supported Markdown image lines become temporary text anchors and are inserted by HWP COM `InsertPicture`.
+- Supported Markdown body tables are rendered as HWPX table objects by default. Use `--markdown-table-mode text` only when preserving the original HWPX table count matters more than table semantics.
+- Supported Markdown image lines become temporary text anchors and are inserted by default with package-level `BinData`/`hp:pic` updates. Use `--image-mode com` only when local HWP COM is healthy and editor-backed insertion is required.
 - The report lists template/profile compatibility, total Markdown tables/images, table handling mode, rendered/converted table counts, configured asset roots, resolved image paths, missing image candidate paths, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
-- If HWP COM cannot start, the pre-COM report still shows pending image anchors so missing image support is visible instead of silent.
 - Package text writes guard against tiny placeholder styles by replacing sub-7pt `charPr` references on written runs. HWP COM table-cell writes set 10pt before `InsertText`.
 - Package cell writes validate extracted `currentText` by default. Set `validateCurrentText="false"` on `writeText` only when a staged write deliberately targets already-changed text.
 
@@ -112,6 +111,23 @@ Then validate:
 ```
 
 Layout reports classify findings as `expected-change`, `review-needed`, or `blocking` and include a one-line verdict.
+
+## Feature Coverage
+
+Scan a file or corpus to see which HWPX authoring features are present:
+
+```powershell
+& $cli scan-hwpx-features 'test' 'test\out\hwpx_feature_scan.md'
+```
+
+Regenerate and scan the tracked feature fixtures:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
+& $cli scan-hwpx-features 'test\corpus\features' 'test\out\hwpx_feature_scan_features.md'
+```
+
+The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Treat these as corpus evidence only; writing/editing support must be verified separately.
 
 ## Markdown Tables Into Existing HWPX Tables
 

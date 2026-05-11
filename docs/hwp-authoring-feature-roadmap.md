@@ -9,7 +9,7 @@
 ## 근거
 
 - 현재 repo 기능 근거: `scan-hwpx-features test test\out\hwpx_feature_scan.md`, `Program.cs` CLI 표면, `HwpxFormMap`, `HwpxTableModel`, `HwpxPackageImageInserter`, `HwpxLayoutValidator`.
-- 현재 test corpus 결과: HWPX 61개, package/XML parse error 0, 표 3,047개, 셀 70,556개, 병합셀 20,359개, 중첩표 183개, 그림 94개, 필드/양식 0개.
+- 현재 test corpus 결과: HWPX 69개, package/XML parse error 0, 표 3,049개, 셀 70,558개, 병합셀 20,360개, 중첩표 184개, 그림 94개, 필드/양식 492개, header/footer 4개, note 4개, reference 128개, embedded object 5개.
 - 한컴 공식 도움말 기준:
   - [입력 탭](https://help.hancom.com/hoffice/multi/ko_kr/hwp/view/toolbar/menu_insert.htm): 표, 차트, 도형, 그림, 스크린샷, 글맵시, 수식, 동영상, 문단 띠, 양식 개체, 누름틀, 각주/미주, 책갈피, 상호 참조, 하이퍼링크, 문자표, 한자 입력.
   - [표 메뉴](https://help.hancom.com/hoffice/multi/ko_kr/hwp/menu/table.htm): 표 만들기/그리기, 문자열-표 변환, 표/셀 속성, 테두리/배경, 줄/칸 추가/삭제, 셀 나누기/합치기, 표 계산식.
@@ -85,6 +85,13 @@
 - corpus가 없어서 구현 여부를 판단하지 못하는 항목을 report에서 별도 표시한다.
 
 우선순위: P0
+
+구현 상태(2026-05-11):
+
+- `test/corpus/features/*.hwpx` 8개 fixture와 `tools/New-HwpxFeatureFixtures.ps1` 생성 스크립트를 추가했다.
+- `scan-hwpx-features` report는 aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals를 출력한다.
+- 상세 inventory report는 header/footer, field/form, reference, note 신호를 파일/part/type/text 단위로 보여준다.
+- 이 단계는 corpus inventory이며, 해당 기능의 write/edit 지원을 의미하지 않는다. 실제 작성 기능은 각 phase의 별도 개발 단위에서 검증한다.
 
 ### Phase 1. 머리말/꼬리말 및 쪽/구역 모델
 
@@ -384,12 +391,12 @@
 
 ## 추천 개발 순서
 
-1. Phase 0: corpus fixture와 `scan-hwpx-features` 확장.
+1. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
 2. Phase 10 일부: PDF visual smoke harness.
-3. Phase 1: header/footer inventory와 text write.
-4. Phase 2: field/누름틀 inventory와 named fill.
+3. Phase 1: header/footer text write와 page number support.
+4. Phase 2: field/누름틀 named fill.
 5. Phase 3: table authoring 기본 create/add/delete/merge/split.
-6. Phase 4: caption/cross-reference inventory와 COM refresh workflow.
+6. Phase 4: caption/cross-reference COM insert/refresh workflow.
 7. Phase 5: footnote/endnote preservation과 COM insert.
 8. Phase 6: shape inventory diff와 text box write.
 9. Phase 7: equation inventory와 COM insert.
@@ -398,19 +405,18 @@
 
 ## 바로 다음 커밋 후보
 
-### 후보 A: Feature scanner 확장
+### 후보 A: PDF visual smoke harness
 
-- shape type별 count.
-- header/footer/note part 상세 count.
-- field/form/bookmark/caption/cross-reference 감지.
-- report에 "corpus missing"과 "implementation missing"을 분리.
+- `test/corpus/features`의 대표 fixture를 PDF로 export하는 smoke command 정리.
+- scan report와 PDF export 결과를 같은 report 묶음으로 남긴다.
+- HWP COM이 불안정하면 `diagnose-com`과 visible export를 우선 실행한다.
 
-이유: 아직 corpus가 좁아서 "대부분의 기능 구현 가능" 같은 판단을 하면 위험하다.
+이유: scanner inventory는 구조 신호만 보므로, 실제 한글/ PDF 표시 여부를 별도 검증해야 한다.
 
 ### 후보 B: Header/footer inventory
 
-- `extract-form-map` 또는 새 명령 `scan-hwpx-features`에 header/footer content summary 추가.
-- header/footer fixture 1개 추가.
+- 기존 header/footer paragraph anchor에 text write.
+- section별 header/footer/page number smoke test.
 
 이유: 공문/제안서/보고서에서 머리말, 꼬리말, 쪽 번호는 매우 흔하다.
 
@@ -427,4 +433,3 @@
 - header/footer/각주/누름틀 fixture 없이 구현 완료라고 주장하기.
 - 전체 Markdown 문서를 `replace-markdown` 류로 밀어 넣고 HWP native 구조라고 부르기.
 - HWP COM으로 한 번 열렸다는 사실만으로 package 구조 보존을 생략하기.
-

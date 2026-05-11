@@ -110,6 +110,15 @@ Scan a file or directory of HWPX packages to see which authoring features are ac
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test test\out\hwpx_feature_scan.md
 ```
 
+The tracked feature corpus can be regenerated and scanned independently:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test\corpus\features test\out\hwpx_feature_scan_features.md
+```
+
+The feature scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, references, and notes. Console output also reports `field_markers`, `form_objects`, `headers_footers`, `notes`, `references`, and `embedded_objects`. These counts are corpus inventory signals, not proof that writing or editing for a feature is implemented.
+
 For the supported startup R&D submission profile, use the dedicated profile command:
 
 ```bat

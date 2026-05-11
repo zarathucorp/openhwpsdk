@@ -57,7 +57,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible prob
 
 The probe checks every table cell by selecting it and every paragraph anchor by finding it in HWP. If a long anchor cannot be found exactly, it tries a shorter heading prefix and records that as `fallback search` in the report.
 
-Apply the filled map through HWP automation when image insertion or editor-backed behavior is required:
+Apply the filled map through HWP automation when editor-backed behavior is required:
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_applied.hwpx"
@@ -172,6 +172,22 @@ Scan HWPX feature coverage:
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test" "test\out\hwpx_feature_scan.md"
 ```
+
+Regenerate and scan the tracked authoring feature corpus:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test\corpus\features" "test\out\hwpx_feature_scan_features.md"
+```
+
+The feature scan report separates corpus evidence from implementation support. It includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for:
+
+- header/footer bodies and references
+- field/form objects and named field signals
+- bookmarks, captions, hyperlinks, cross references, TOC/index markers, page/auto numbers
+- footnotes, endnotes, memos, and comments
+
+Use `Missing Corpus Signals` to decide which fixture is absent. Do not treat a nonzero count as write support; the scan proves only that the HWPX package contains the feature.
 
 Export PDFs for visual inspection:
 

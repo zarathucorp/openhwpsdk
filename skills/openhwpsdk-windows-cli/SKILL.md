@@ -48,16 +48,16 @@ For an existing official HWPX template, preserve the template and fill it:
 1. `extract-form-map` from the real HWPX package.
 2. Edit only generated `writeText` and `writeImage` entries in the map XML.
 3. Run `--visible probe-form-map` before HWP-backed writes.
-4. Run `apply-form-map`; use `apply-form-map --package` only for text-only XML writes. Use `--report` in either mode when attempted/applied/failed/skipped detail matters.
+4. Run `apply-form-map`; use `apply-form-map --package` for COM-free text writes and package-level image embedding when editor-backed behavior is not required. Use `--report` in either mode when attempted/applied/failed/skipped detail matters.
 5. Run `validate-layout`, then `validate-content`, then export PDFs if visual checking is needed. Use `--allow-table-row-change <indexes>` when a known table expansion is intentional.
 
 For the supported R&D startup submission template, prefer:
 
 ```powershell
-& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --markdown-table-mode text --report 'test\out\submission_filled_report.md'
+& $cli fill-submission-template '<template.hwpx>' '<source.md>' 'test\out\submission_filled.hwpx' --profile r-and-d-startup-2026 --asset-root '<image-root>' --image-mode package --report 'test\out\submission_filled_report.md'
 ```
 
-This profile converts body Markdown tables to text by default to preserve the original HWPX table structure; use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable. It queues supported Markdown image lines for HWP COM `InsertPicture` through temporary text anchors. The report includes template/profile compatibility, image path resolution candidates, mapped/unmapped image counts, and classified layout findings. If images are present, HWP COM must be healthy; package-mode image insertion remains intentionally unsupported and must be reported as skipped.
+This profile renders body Markdown tables as HWPX table objects by default; use `--markdown-table-mode text` only when preserving the original HWPX table count matters more than table semantics. It queues supported Markdown image lines as temporary text anchors and inserts them by default with profile-specific package-level `BinData`/`hp:pic` updates. Package image insertion embeds the original image file, sizes the displayed object from image DPI with a 96-DPI fallback, and scales down only when the natural 100% size exceeds the document body area. Use `--image-mode com` only when local HWP COM is healthy and editor-backed image insertion is required; use `--image-mode none` for text/table-only staging. The report includes template/profile compatibility, image path resolution candidates, mapped/unmapped image counts, image write results, and classified layout findings.
 
 Package text writes guard against tiny placeholder text styles by replacing sub-7pt `charPr` references on written runs. HWP COM table-cell writes set 10pt before `InsertText`. Package cell writes validate extracted `currentText` by default; disable only with `validateCurrentText="false"` on deliberate staged rewrites.
 
@@ -69,6 +69,23 @@ For existing tables, inspect Markdown tables first, then fill existing cells:
 ```
 
 Use row/column table writes carefully around merged or irregular tables. Prefer map/probe evidence or a dedicated table dump/resolver before claiming the cell target is safe.
+
+## Feature Coverage
+
+Use `scan-hwpx-features` when the question is what HWPX authoring features are present in a file or corpus:
+
+```powershell
+& $cli scan-hwpx-features 'test' 'test\out\hwpx_feature_scan.md'
+```
+
+Regenerate the tracked feature corpus before relying on fixture coverage:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
+& $cli scan-hwpx-features 'test\corpus\features' 'test\out\hwpx_feature_scan_features.md'
+```
+
+The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Counts are inventory signals only; they do not mean the feature can be written or edited yet.
 
 ## Windows Rules
 
