@@ -138,6 +138,8 @@ namespace OpenHwp.Automation.Cli
                     return ListHeaderFooter(commandArgs);
                 case "set-header-footer-text":
                     return SetHeaderFooterText(commandArgs);
+                case "page-number-set":
+                    return PageNumberSet(commandArgs, visible, keepOpen);
                 case "list-controls":
                     return ListControls(commandArgs, visible, keepOpen);
                 case "probe-copy-from-doc":
@@ -1534,6 +1536,84 @@ namespace OpenHwp.Automation.Cli
             return result.Applied ? 0 : 2;
         }
 
+        private static int PageNumberSet(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            var drawPos = 5;
+            var sideChar = "-";
+            string reportPath = null;
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--draw-pos", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length || !int.TryParse(args[index + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out drawPos))
+                    {
+                        Console.Error.WriteLine("--draw-pos requires an integer value.");
+                        return 1;
+                    }
+
+                    index++;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--side-char", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --side-char.");
+                        return 1;
+                    }
+
+                    sideChar = args[++index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --report.");
+                        return 1;
+                    }
+
+                    reportPath = args[++index];
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            bool applied;
+            using (var hwp = CreateSession(visible, keepOpen))
+            {
+                ConfigureSessionForAutomation(hwp);
+                OpenSessionDocument(hwp, args[1], string.Empty, "forceopen:true");
+                applied = hwp.AddPageNumbering(drawPos, sideChar);
+                if (applied)
+                {
+                    hwp.SaveAs(args[2], ResolveSaveFormat(args[2]), string.Empty);
+                }
+            }
+
+            WritePageNumberReport(args[1], args[2], drawPos, sideChar, applied, reportPath);
+            Console.WriteLine("applied=" + BoolText(applied));
+            Console.WriteLine("draw_pos=" + drawPos.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("side_char=" + sideChar);
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                Console.WriteLine(reportPath);
+            }
+
+            return applied ? 0 : 2;
+        }
+
         private static int ListControls(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 2 || args.Length > 3)
@@ -2368,6 +2448,29 @@ namespace OpenHwp.Automation.Cli
             WriteUtf8File(reportPath, report.ToString());
         }
 
+        private static void WritePageNumberReport(string inputPath, string outputPath, int drawPos, string sideChar, bool applied, string reportPath)
+        {
+            if (string.IsNullOrWhiteSpace(reportPath))
+            {
+                return;
+            }
+
+            var report = new StringBuilder();
+            report.AppendLine("# HWP Page Number Set");
+            report.AppendLine();
+            report.AppendLine("- input: `" + inputPath + "`");
+            report.AppendLine("- output: `" + outputPath + "`");
+            report.AppendLine("- verdict: " + (applied ? "applied" : "failed"));
+            report.AppendLine();
+            report.AppendLine("| field | value |");
+            report.AppendLine("| --- | --- |");
+            report.AppendLine("| drawPos | " + drawPos.ToString(CultureInfo.InvariantCulture) + " |");
+            report.AppendLine("| sideChar | " + EscapeMarkdownTable(sideChar) + " |");
+            report.AppendLine("| applied | " + BoolText(applied) + " |");
+
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
         private static void WriteControlsReport(string inputPath, IList<HwpControlInfo> controls, string reportPath)
         {
             var report = new StringBuilder();
@@ -2826,6 +2929,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section section0] [--occurrence index] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");

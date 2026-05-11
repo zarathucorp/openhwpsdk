@@ -110,6 +110,7 @@ Scan a file or directory of HWPX packages to see which authoring features are ac
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test test\out\hwpx_feature_scan.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer test\corpus\features\header-footer.hwpx test\out\header_footer_inventory.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text test\corpus\features\header-footer.hwpx test\out\header_footer_text_write.hwpx --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report test\out\header_footer_text_write.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible page-number-set C:\temp\template.hwpx C:\temp\page-numbered.hwpx --draw-pos 5 --side-char - --report C:\temp\page-number-report.md
 ```
 
 The tracked feature corpus can be regenerated and scanned independently:
@@ -119,7 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixture
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test\corpus\features test\out\hwpx_feature_scan_features.md
 ```
 
-The feature scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, references, and notes. Console output also reports `field_markers`, `form_objects`, `headers_footers`, `notes`, `references`, and `embedded_objects`. Use `list-header-footer` when you need a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; it does not create new header/footer areas. These counts are corpus inventory signals, not proof that writing or editing for a feature is implemented.
+The feature scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, references, and notes. Console output also reports `field_markers`, `form_objects`, `headers_footers`, `notes`, `references`, and `embedded_objects`. Use `list-header-footer` when you need a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; it does not create new header/footer areas. Use `page-number-set` for COM-backed page number insertion, then verify with `scan-hwpx-features` and `validate-layout`. Feature scan counts are inventory signals; they do not imply broad write/edit support.
 
 For the supported startup R&D submission profile, use the dedicated profile command:
 

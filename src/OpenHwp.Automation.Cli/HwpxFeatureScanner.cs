@@ -78,7 +78,7 @@ namespace OpenHwp.Automation.Cli
             AppendCoverageRow(builder, "headers/footers", summary.Count("pageHeaders") + summary.Count("pageFooters") + summary.Count("pageHeaderReferences") + summary.Count("pageFooterReferences"), "section-aware inventory; package replacement of existing text anchors in existing header/footer bodies", "new header/footer creation, COM editing, and layout positioning are not implemented");
             AppendCoverageRow(builder, "footnotes/endnotes", summary.Count("footnotes") + summary.Count("endnotes"), "inventory only", "footnote/endnote insertion and editing are not implemented");
             AppendCoverageRow(builder, "equations/charts/OLE", summary.Count("equations") + summary.Count("charts") + summary.Count("oleObjects"), "inventory only", "equation/chart/OLE insertion and editing are not implemented");
-            AppendCoverageRow(builder, "captions/bookmarks/references", CountReferenceSignals(summary), "inventory only", "caption/reference insertion and refresh are not implemented");
+            AppendCoverageRow(builder, "captions/bookmarks/references", CountReferenceSignals(summary), "inventory; COM page number insertion", "caption/bookmark/cross-reference insertion and refresh are not implemented");
             AppendCoverageRow(builder, "media", summary.Count("videos") + summary.Count("sounds"), "inventory only", "media insertion/editing is not implemented");
 
             builder.AppendLine();

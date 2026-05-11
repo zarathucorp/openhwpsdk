@@ -135,6 +135,7 @@
 - `scan-hwpx-features`의 Header/Footer Inventory 표도 동일하게 section/applyPageType 컬럼을 포함하도록 확장했다.
 - `set-header-footer-text` 명령으로 기존 header/footer body 안의 anchor 텍스트를 package-level로 치환한다.
 - `header-footer.hwpx` fixture에서 header 본문 텍스트 치환 후 content/layout/header-footer inventory smoke를 통과했다.
+- `page-number-set` 명령으로 COM 기반 쪽 번호를 삽입한다. 실제 제출서식 smoke에서 `pageNumbers=1`, `references` 2 -> 3, 표 48개 유지, layout verdict pass를 확인했다.
 - COM 기반 header/footer 쓰기와 신규 header/footer 영역 생성은 아직 다음 개발 단위다.
 
 ### Phase 2. 누름틀/필드/양식 개체
