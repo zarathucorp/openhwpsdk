@@ -192,6 +192,8 @@
 - 병합/중첩 표만 있는 `table-authoring.hwpx` fixture에서는 안전한 reference table이 없어서 실패하도록 막았다. 다음 단위는 reference 없이 minimal table을 생성하거나, row/column 조작을 기존 reference 기반으로 확장하는 작업이다.
 - `table-row-package` 명령으로 단순 top-level 텍스트 셀 표의 행 추가/삭제를 지원한다. 병합/중첩/sparse/주소 불일치/객체 포함 표는 거부하고, 행 추가/삭제 후 `cellAddr`, `rowCnt`, `colCnt`, 표 크기를 재정규화한다.
 - 실제 제출서식 smoke에서 top-level table 4에 2행을 추가해 3 -> 5행, 1행을 삭제해 3 -> 2행으로 변경했고, `validate-layout --allow-table-row-change 4`에서 expected-change/pass를 확인했다.
+- `table-column-package` 명령으로 같은 안전 범위의 `section0` 표에 열 추가/삭제를 지원한다. 열 변경은 표 폭도 함께 바뀌므로 `validate-layout --allow-table-column-change` 옵션을 추가해 의도된 열/폭 변경을 expected-change로 분류한다.
+- 실제 제출서식 smoke에서 top-level table 4에 1열을 추가해 4 -> 5열, 1열을 삭제해 4 -> 3열로 변경했고, `validate-layout --allow-table-column-change 4`에서 expected-change/pass를 확인했다.
 
 개발 단위:
 

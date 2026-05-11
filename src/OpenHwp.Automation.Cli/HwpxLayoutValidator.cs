@@ -36,7 +36,11 @@ namespace OpenHwp.Automation.Cli
             for (var index = 0; index < templateTables.Count; index++)
             {
                 var original = templateTables[index];
-                var matchedIndex = FindMatchingCoreTable(candidateTables, original, candidateIndex);
+                var allowRowChange = options.AllowedRowGrowthTables.Contains(index);
+                var allowColumnChange = options.AllowedColumnChangeTables.Contains(index);
+                var matchedIndex = allowColumnChange && index < candidateTables.Count
+                    ? (IsAllowedColumnChangeMatch(original, candidateTables[index], allowRowChange) ? index : -1)
+                    : FindMatchingCoreTable(candidateTables, original, candidateIndex);
                 if (matchedIndex < 0)
                 {
                     changedCoreTables++;
@@ -58,6 +62,7 @@ namespace OpenHwp.Automation.Cli
                 var current = candidateTables[matchedIndex];
                 candidateIndex = matchedIndex + 1;
                 var rowChanged = Math.Abs(current.RowCount - original.RowCount);
+                var columnChanged = current.ColumnCount != original.ColumnCount || Math.Abs(current.Width - original.Width) > 50;
 
                 foreach (var overlapIssue in current.GridOverlapIssues)
                 {
@@ -76,6 +81,21 @@ namespace OpenHwp.Automation.Cli
                     issues.Add(options.AllowedRowGrowthTables.Contains(index)
                         ? LayoutIssue.ExpectedChange(message)
                         : LayoutIssue.ReviewNeeded(message));
+                }
+
+                if (columnChanged)
+                {
+                    var message = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "table {0} column/width changed: cols {1}->{2}, width {3}->{4}",
+                        index,
+                        original.ColumnCount,
+                        current.ColumnCount,
+                        original.Width,
+                        current.Width);
+                    issues.Add(allowColumnChange
+                        ? LayoutIssue.ExpectedChange(message)
+                        : LayoutIssue.Blocking(message));
                 }
             }
 
@@ -106,6 +126,7 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine(string.Format("- changed core tables: {0}", changedCoreTables));
             report.AppendLine(string.Format("- leading paragraph style drift: {0}", paragraphStyleDrift));
             report.AppendLine(string.Format("- allowed row-growth tables: {0}", options.AllowedRowGrowthTables.Count == 0 ? "none" : string.Join(", ", options.AllowedRowGrowthTables.OrderBy(item => item).Select(item => item.ToString(CultureInfo.InvariantCulture)).ToArray())));
+            report.AppendLine(string.Format("- allowed column-change tables: {0}", options.AllowedColumnChangeTables.Count == 0 ? "none" : string.Join(", ", options.AllowedColumnChangeTables.OrderBy(item => item).Select(item => item.ToString(CultureInfo.InvariantCulture)).ToArray())));
             report.AppendLine(string.Format("- max leading paragraph style drift: {0}", options.MaxLeadingParagraphStyleDrift));
             report.AppendLine(string.Format("- expected-change issues: {0}", expectedCount));
             report.AppendLine(string.Format("- review-needed issues: {0}", reviewCount));
@@ -165,13 +186,23 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
+            return IsSameTableIdentity(original, current);
+        }
+
+        private static bool IsAllowedColumnChangeMatch(TableSignature original, TableSignature current, bool allowRowChange)
+        {
+            return (allowRowChange || original.RowCount == current.RowCount) &&
+                   string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal);
+        }
+
+        private static bool IsSameTableIdentity(TableSignature original, TableSignature current)
+        {
             if (!string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal))
             {
                 return false;
             }
 
             return original.FirstLabels.Count == 0 ||
-                   current.FirstLabels.Count == 0 ||
                    string.Equals(original.FirstLabels[0], current.FirstLabels[0], StringComparison.Ordinal);
         }
 
@@ -292,11 +323,14 @@ namespace OpenHwp.Automation.Cli
         {
             public ISet<int> AllowedRowGrowthTables { get; private set; }
 
+            public ISet<int> AllowedColumnChangeTables { get; private set; }
+
             public int MaxLeadingParagraphStyleDrift { get; set; }
 
             public ValidationOptions()
             {
                 AllowedRowGrowthTables = new HashSet<int>();
+                AllowedColumnChangeTables = new HashSet<int>();
                 MaxLeadingParagraphStyleDrift = 10;
             }
         }

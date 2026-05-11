@@ -157,11 +157,13 @@ Fill an existing HWPX table without recreating it:
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-create-package "<template.hwpx>" "test\out\new_table.hwpx" --rows 2 --cols 3 --text "Header A|Header B|Header C;Value 1|Value 2|Value 3" --report "test\out\new_table_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-row-package "<template.hwpx>" "test\out\row_added.hwpx" --table-index 4 --action add --row 1 --count 2 --text "R1C1|R1C2|R1C3|R1C4;R2C1|R2C2|R2C3|R2C4" --report "test\out\row_added_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-column-package "<template.hwpx>" "test\out\column_added.hwpx" --table-index 4 --action add --column 1 --count 1 --text "HNEW;R1NEW;R2NEW" --report "test\out\column_added_report.md"
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "test\out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
 ```
 
 `table-create-package` is the COM-free path for creating a new simple table. It needs an existing unmerged top-level table in the source HWPX so it can clone stable table, cell, paragraph, and border defaults; it fails instead of guessing when no safe reference table exists. `--after-anchor` only targets top-level body paragraphs, and text input reports ignored or missing cells when the source matrix does not match `--rows` x `--cols`. Validate with content requirements for inserted text and `validate-layout` to confirm the expected table count increase does not disturb existing tables.
 `table-row-package` adds or deletes rows in an existing simple top-level text-cell table. It rejects merged, nested, sparse, irregular-address, or object-containing tables and re-normalizes row/cell addresses; use `validate-layout --allow-table-row-change <index>` to classify the intended row-count change as expected. For add, `--row` means insert after that zero-based row; for delete, `--row` is the first zero-based row to delete.
+`table-column-package` adds or deletes columns in the same simple text-cell table subset in `section0` and re-normalizes cell addresses. Column operations intentionally change column count and table width, so use `validate-layout --allow-table-column-change <index>` with the validator's all-table index when that change is expected. For add, `--column` means insert after that zero-based column; for delete, `--column` is the first zero-based column to delete.
 
 Copy a whole table or control from a reference HWP/HWPX document through HWP's editor-backed clipboard path:
 

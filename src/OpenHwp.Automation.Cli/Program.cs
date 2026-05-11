@@ -122,6 +122,8 @@ namespace OpenHwp.Automation.Cli
                     return TableCreatePackage(commandArgs);
                 case "table-row-package":
                     return TableRowPackage(commandArgs);
+                case "table-column-package":
+                    return TableColumnPackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -1121,6 +1123,127 @@ namespace OpenHwp.Automation.Cli
             return result.Applied ? 0 : 2;
         }
 
+        private static int TableColumnPackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("  For add, --column means insert after that zero-based column; omit it to append after the last column. For delete, --column is the zero-based first column to delete.");
+                return 1;
+            }
+
+            var options = new TableColumnOperationOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0",
+                TableIndex = -1,
+                Count = 1
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--table-index", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.TableIndex = ParseIntArgument(RequireValue(args, ref index, "--table-index"), "table-index");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--action", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Action = RequireValue(args, ref index, "--action");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--column", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ColumnIndex = ParseIntArgument(RequireValue(args, ref index, "--column"), "column");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--count", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Count = ParseIntArgument(RequireValue(args, ref index, "--count"), "count");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = RequireValue(args, ref index, "--text");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = ReadTextFile(RequireValue(args, ref index, "--text-file"));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.TableIndex < 0)
+            {
+                Console.Error.WriteLine("--table-index is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Count <= 0)
+            {
+                Console.Error.WriteLine("--count must be greater than zero.");
+                return 1;
+            }
+
+            var action = (options.Action ?? string.Empty).Trim().ToLowerInvariant();
+            if (action != "add" && action != "delete")
+            {
+                Console.Error.WriteLine("--action must be add or delete.");
+                return 1;
+            }
+
+            if (action == "delete" && !options.ColumnIndex.HasValue)
+            {
+                Console.Error.WriteLine("--column is required when --action delete.");
+                return 1;
+            }
+
+            var result = HwpxTableColumnEditor.Apply(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("action=" + result.Action);
+            Console.WriteLine("table_index=" + result.TableIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("effective_column=" + (result.EffectiveColumn.HasValue ? result.EffectiveColumn.Value.ToString(CultureInfo.InvariantCulture) : string.Empty));
+            Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("added_columns=" + result.AddedColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("deleted_columns=" + result.DeletedColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_text_cells=" + result.MissingTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("ignored_text_cells=" + result.IgnoredTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
         private static int FillMarkdownTable(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 6)
@@ -1622,6 +1745,24 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
+                if (string.Equals(args[index], "--allow-table-column-change", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[index], "--allow-column-change", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for " + args[index] + ".");
+                        return 1;
+                    }
+
+                    index++;
+                    if (!AddTableIndexes(options.AllowedColumnChangeTables, args[index]))
+                    {
+                        return 1;
+                    }
+
+                    continue;
+                }
+
                 if (string.Equals(args[index], "--max-leading-style-drift", StringComparison.OrdinalIgnoreCase))
                 {
                     if (index + 1 >= args.Length)
@@ -1646,7 +1787,7 @@ namespace OpenHwp.Automation.Cli
 
             if (values.Count < 2 || values.Count > 3)
             {
-                Console.Error.WriteLine("Usage: validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
+                Console.Error.WriteLine("Usage: validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--allow-table-column-change indexes] [--max-leading-style-drift count]");
                 return 1;
             }
 
@@ -3416,13 +3557,15 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
             Console.WriteLine("  table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
             Console.WriteLine("    For add, --row inserts after that zero-based row; for delete, --row is the first zero-based row to delete.");
+            Console.WriteLine("  table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("    For add, --column inserts after that zero-based column; for delete, --column is the first zero-based column to delete.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
-            Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--max-leading-style-drift count]");
+            Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--allow-table-column-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
