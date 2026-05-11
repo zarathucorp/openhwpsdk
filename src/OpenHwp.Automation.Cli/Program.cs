@@ -126,6 +126,8 @@ namespace OpenHwp.Automation.Cli
                     return TableColumnPackage(commandArgs);
                 case "table-merge-package":
                     return TableMergePackage(commandArgs);
+                case "table-split-package":
+                    return TableSplitPackage(commandArgs);
                 case "table-cell-set":
                     return TableCellSet(commandArgs, visible, keepOpen);
                 case "fill-markdown-table":
@@ -1373,6 +1375,118 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("removed_cells=" + result.RemovedCells.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("merged_text_length=" + result.MergedTextLength.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
+        private static int TableSplitPackage(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("  --row and --column identify the zero-based top-left address of the merged cell to split.");
+                return 1;
+            }
+
+            var options = new TableSplitOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2],
+                Section = "section0",
+                TableIndex = -1,
+                Row = -1,
+                Column = -1
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--table-index", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.TableIndex = ParseIntArgument(RequireValue(args, ref index, "--table-index"), "table-index");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--row", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Row = ParseIntArgument(RequireValue(args, ref index, "--row"), "row");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--column", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Column = ParseIntArgument(RequireValue(args, ref index, "--column"), "column");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = RequireValue(args, ref index, "--text");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Text = ReadTextFile(RequireValue(args, ref index, "--text-file"));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (options.TableIndex < 0)
+            {
+                Console.Error.WriteLine("--table-index is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Row < 0)
+            {
+                Console.Error.WriteLine("--row is required and must be zero or greater.");
+                return 1;
+            }
+
+            if (options.Column < 0)
+            {
+                Console.Error.WriteLine("--column is required and must be zero or greater.");
+                return 1;
+            }
+
+            var result = HwpxTableSplitEditor.Split(options);
+            Console.WriteLine(result.OutputPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("table_index=" + result.TableIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("row=" + result.Row.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("column=" + result.Column.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("row_span=" + result.RowSpan.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("column_span=" + result.ColumnSpan.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_rows=" + result.OriginalRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_rows=" + result.NewRows.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_columns=" + result.OriginalColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_columns=" + result.NewColumns.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("original_physical_cells=" + result.OriginalPhysicalCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("new_physical_cells=" + result.NewPhysicalCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("added_cells=" + result.AddedCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_text_cells=" + result.MissingTextCells.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("ignored_text_cells=" + result.IgnoredTextCells.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("style_repaired_runs=" + result.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("note=" + result.Note);
             if (!string.IsNullOrWhiteSpace(options.ReportPath))
@@ -3700,6 +3814,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("    For add, --column inserts after that zero-based column; for delete, --column is the first zero-based column to delete.");
             Console.WriteLine("  table-merge-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --row-span count --col-span count [--text text] [--text-file path] [--section section0] [--report reportMarkdownPath]");
             Console.WriteLine("    --row and --column are the zero-based top-left cell of the rectangular merge region.");
+            Console.WriteLine("  table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("    --row and --column are the zero-based top-left address of the merged cell to split.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
             Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");
