@@ -1396,7 +1396,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -1486,7 +1486,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 4)
             {
-                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -2183,6 +2183,15 @@ namespace OpenHwp.Automation.Cli
                 return selected;
             }
 
+            if (location.Kind == "image")
+            {
+                var selected = hwp.SelectControl("gso", location.Index);
+                note = selected
+                    ? "selected image/gso control " + location.Index.ToString(CultureInfo.InvariantCulture)
+                    : "image/gso control was not found: " + location.Index.ToString(CultureInfo.InvariantCulture);
+                return selected;
+            }
+
             if (location.Kind == "control")
             {
                 var selected = hwp.SelectControl(location.CtrlId, location.Index);
@@ -2413,6 +2422,25 @@ namespace OpenHwp.Automation.Cli
                     return true;
                 }
 
+                if (trimmed.StartsWith("image:", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (target)
+                    {
+                        reason = "image selector is source-only; use control:gso:<index> as an explicit target control selector.";
+                        return false;
+                    }
+
+                    int index;
+                    if (!TryParseNonNegative(trimmed.Substring("image:".Length), out index))
+                    {
+                        reason = "image selector must be image:<zero-based-index>.";
+                        return false;
+                    }
+
+                    location = new CopyLocation { Raw = trimmed, Kind = "image", Index = index };
+                    return true;
+                }
+
                 if (trimmed.StartsWith("control:", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = trimmed.Substring("control:".Length);
@@ -2526,8 +2554,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");

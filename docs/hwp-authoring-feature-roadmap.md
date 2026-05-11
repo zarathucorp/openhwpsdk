@@ -96,10 +96,10 @@
 복붙 자동화 상태(2026-05-11):
 
 - HWP COM 기반 `list-controls`, `probe-copy-from-doc`, `copy-from-doc` 명령을 추가했다.
-- 현재 rich copy source는 `all`, `paragraph-to-end:<text>`, `table:<index>`, `control:<ctrlId>:<index>`를 지원한다.
+- 현재 rich copy source는 `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, `control:<ctrlId>:<index>`를 지원한다.
 - target은 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<ctrlId>:<index>`를 지원한다.
 - 실제 제출서식 smoke에서 `table:0`을 대상 문서 끝에 붙여넣고, 표 48개 -> 49개, changed core tables 0, layout verdict pass를 확인했다.
-- 이미지 전용 selector는 아직 미구현이다.
+- `image:<index>`는 `list-controls`의 전역 `index`가 아니라 `gso` 행의 `typeIndex` 값을 source-only로 복사한다.
 
 ### Phase 1. 머리말/꼬리말 및 쪽/구역 모델
 

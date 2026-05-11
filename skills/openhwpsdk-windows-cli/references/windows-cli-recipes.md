@@ -162,16 +162,16 @@ Inspect controls in the reference document:
 Probe before mutating the target:
 
 ```powershell
-& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source table:0 --target doc-end --report 'test\out\copy_probe.md'
+& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source image:0 --target doc-end --report 'test\out\copy_probe.md'
 ```
 
 Copy through HWP's editor-backed clipboard path:
 
 ```powershell
-& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
+& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source image:0 --target doc-end --report 'test\out\copy_from_doc.md'
 ```
 
-Supported source selectors are `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` starts at the paragraph containing the text. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Image-specific selectors are not implemented yet. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
+Supported source selectors are `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` starts at the paragraph containing the text. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
 
 ## Acceptance Checklist
 

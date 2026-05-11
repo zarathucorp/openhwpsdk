@@ -159,11 +159,11 @@ Copy a whole table or control from a reference HWP/HWPX document through HWP's e
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls "<reference.hwpx>" "test\out\reference_controls.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc "<reference.hwpx>" "<target.hwpx>" --source table:0 --target doc-end --report "test\out\copy_probe.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "test\out\copy_from_doc.hwpx" --source table:0 --target doc-end --report "test\out\copy_from_doc.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc "<reference.hwpx>" "<target.hwpx>" --source image:0 --target doc-end --report "test\out\copy_probe.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "test\out\copy_from_doc.hwpx" --source image:0 --target doc-end --report "test\out\copy_from_doc.md"
 ```
 
-Use `probe-copy-from-doc` before mutation. Source selectors support `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` selects from the paragraph containing the text through the document end. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
+Use `probe-copy-from-doc` before mutation. Source selectors support `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` selects from the paragraph containing the text through the document end. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
 
 Run structural layout validation:
 

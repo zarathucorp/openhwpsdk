@@ -74,11 +74,11 @@ For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe f
 
 ```powershell
 & $cli --visible list-controls '<reference.hwpx>' 'test\out\reference_controls.md'
-& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source table:0 --target doc-end --report 'test\out\copy_probe.md'
-& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source table:0 --target doc-end --report 'test\out\copy_from_doc.md'
+& $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source image:0 --target doc-end --report 'test\out\copy_probe.md'
+& $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source image:0 --target doc-end --report 'test\out\copy_from_doc.md'
 ```
 
-`copy-from-doc` currently supports whole-document, paragraph-to-end text block, whole-table, and generic-control sources: `all`, `paragraph-to-end:<text>`, `table:<index>`, and `control:<ctrlId>:<index>`. `paragraph-to-end:<text>` starts at the paragraph containing the text. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Image-specific copy is future work; inspect real files with `list-controls` before claiming support.
+`copy-from-doc` currently supports whole-document, paragraph-to-end text block, whole-table, image, and generic-control sources: `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` starts at the paragraph containing the text. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing.
 
 ## Feature Coverage
 
