@@ -133,7 +133,9 @@
 - `list-header-footer` 명령으로 HWPX 파일/디렉터리의 section-aware header/footer inventory를 별도 출력한다.
 - report는 section, part, kind, body/reference role, `applyPageType`, reference attrs, paragraph/table/picture/shape count, text preview를 포함한다.
 - `scan-hwpx-features`의 Header/Footer Inventory 표도 동일하게 section/applyPageType 컬럼을 포함하도록 확장했다.
-- 이 단계는 읽기/inventory 지원이며, header/footer 쓰기는 다음 개발 단위다.
+- `set-header-footer-text` 명령으로 기존 header/footer body 안의 anchor 텍스트를 package-level로 치환한다.
+- `header-footer.hwpx` fixture에서 header 본문 텍스트 치환 후 content/layout/header-footer inventory smoke를 통과했다.
+- COM 기반 header/footer 쓰기와 신규 header/footer 영역 생성은 아직 다음 개발 단위다.
 
 ### Phase 2. 누름틀/필드/양식 개체
 

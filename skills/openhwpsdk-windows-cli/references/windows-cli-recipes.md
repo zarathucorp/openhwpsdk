@@ -119,6 +119,7 @@ Scan a file or corpus to see which HWPX authoring features are present:
 ```powershell
 & $cli scan-hwpx-features 'test' 'test\out\hwpx_feature_scan.md'
 & $cli list-header-footer 'test\corpus\features\header-footer.hwpx' 'test\out\header_footer_inventory.md'
+& $cli set-header-footer-text 'test\corpus\features\header-footer.hwpx' 'test\out\header_footer_text_write.hwpx' --kind header --section section0 --anchor 'Header fixture' --text 'Updated Header Fixture' --report 'test\out\header_footer_text_write.md'
 ```
 
 Regenerate and scan the tracked feature fixtures:
@@ -128,7 +129,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixture
 & $cli scan-hwpx-features 'test\corpus\features' 'test\out\hwpx_feature_scan_features.md'
 ```
 
-The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Treat these as corpus evidence only; writing/editing support must be verified separately.
+The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Treat broad writing/editing support as separate work.
 
 ## Markdown Tables Into Existing HWPX Tables
 

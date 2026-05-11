@@ -136,6 +136,8 @@ namespace OpenHwp.Automation.Cli
                     return ScanHwpxFeatures(commandArgs);
                 case "list-header-footer":
                     return ListHeaderFooter(commandArgs);
+                case "set-header-footer-text":
+                    return SetHeaderFooterText(commandArgs);
                 case "list-controls":
                     return ListControls(commandArgs, visible, keepOpen);
                 case "probe-copy-from-doc":
@@ -1401,6 +1403,135 @@ namespace OpenHwp.Automation.Cli
             }
 
             return 0;
+        }
+
+        private static int SetHeaderFooterText(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section section0] [--occurrence index] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            string kind = null;
+            string section = null;
+            string anchor = null;
+            string text = null;
+            string reportPath = null;
+            var occurrence = 0;
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--kind", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --kind.");
+                        return 1;
+                    }
+
+                    kind = args[++index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --section.");
+                        return 1;
+                    }
+
+                    section = args[++index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--anchor", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --anchor.");
+                        return 1;
+                    }
+
+                    anchor = args[++index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--text", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --text.");
+                        return 1;
+                    }
+
+                    text = args[++index];
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--occurrence", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length || !int.TryParse(args[index + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out occurrence) || occurrence < 0)
+                    {
+                        Console.Error.WriteLine("--occurrence requires a zero-based non-negative integer.");
+                        return 1;
+                    }
+
+                    index++;
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --report.");
+                        return 1;
+                    }
+
+                    reportPath = args[++index];
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(kind))
+            {
+                Console.Error.WriteLine("--kind is required.");
+                return 1;
+            }
+
+            if (string.IsNullOrEmpty(anchor))
+            {
+                Console.Error.WriteLine("--anchor is required.");
+                return 1;
+            }
+
+            if (text == null)
+            {
+                Console.Error.WriteLine("--text is required.");
+                return 1;
+            }
+
+            var result = HwpxHeaderFooterTextWriter.Write(args[1], args[2], kind, section, anchor, text, occurrence, reportPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("matched_bodies=" + result.MatchedBodies.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("modified_text_runs=" + result.ModifiedTextRuns.ToString(CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(result.PartPath))
+            {
+                Console.WriteLine("part=" + result.PartPath);
+            }
+
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                Console.WriteLine(reportPath);
+            }
+
+            return result.Applied ? 0 : 2;
         }
 
         private static int ListControls(string[] args, bool visible, bool keepOpen)
@@ -2694,6 +2825,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section section0] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
