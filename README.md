@@ -150,6 +150,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-row-pack
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-column-package C:\temp\template.hwpx C:\temp\column-added.hwpx --table-index 4 --action add --column 1 --count 1 --text "HNEW;R1NEW;R2NEW" --report C:\temp\column-added-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-merge-package C:\temp\template.hwpx C:\temp\merged.hwpx --table-index 4 --row 1 --column 1 --row-span 2 --col-span 2 --text "Merged cell" --report C:\temp\merged-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-split-package C:\temp\merged.hwpx C:\temp\split.hwpx --table-index 4 --row 1 --column 1 --text "A|B;C|D" --report C:\temp\split-report.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-style-package C:\temp\template.hwpx C:\temp\styled-cell.hwpx --table-index 4 --row 1 --column 1 --border-fill-id 32 --report C:\temp\styled-cell-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table C:\temp\template.hwpx C:\temp\input.md C:\temp\table-out.hwpx 8 3 1 0 1 2 5
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible table-cell-set C:\temp\template.hwpx C:\temp\cell-out.hwpx 3 1 1 "cell text"
 ```
@@ -159,6 +160,7 @@ Use `table-row-package` for COM-free row add/delete on simple top-level text-cel
 Use `table-column-package` for COM-free column add/delete on the same safe text-cell table subset in `section0`. It changes table width by adding/removing cloned cell widths, so validate intentional changes with `validate-layout --allow-table-column-change <index>` using the validator's all-table index. For add, `--column` means insert after that zero-based column; omit it to append after the last column. For delete, `--column` is the zero-based first column to delete.
 Use `table-merge-package` for COM-free rectangular cell merge in simple top-level text-cell tables in `section0`. It starts from an unmerged table, uses `--row` and `--column` as the zero-based top-left cell, preserves the table grid size, removes covered cells, and writes `cellSpan`/combined cell size on the top-left cell. If `--text` is omitted, text from the covered cells is joined in row-major order.
 Use `table-split-package` for COM-free split of an existing merged top-left cell back into 1x1 cells. It preserves the table grid size, samples neighboring column widths and row heights when possible, keeps existing merged text in the top-left cell when `--text` is omitted, and can distribute replacement text with the same `;`/newline row and `|` cell delimiters.
+Use `table-cell-style-package` to apply an existing `Contents/header.xml` borderFill ID to a cell or rectangular range. The selected range applies to all cells whose span intersects the zero-based `--row`/`--column` rectangle, so a covered coordinate inside a merged cell styles that merged top-left cell.
 
 Use HWP COM-backed rich copy/paste when an existing reference document already has the table or control formatting you need:
 

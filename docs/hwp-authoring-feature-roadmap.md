@@ -198,6 +198,8 @@
 - `--text`가 없으면 병합 범위 안의 기존 셀 텍스트를 row-major 순서로 합친다. 병합 입력은 현재 병합/중첩/sparse/주소 불일치/객체 포함 표를 거부한다.
 - `table-split-package` 명령으로 기존 병합셀을 다시 1x1 셀 grid로 나누는 package writer를 추가했다. 병합된 top-left 셀 주소를 기준으로 covered cell을 다시 만들고, 주변 셀에서 열 너비/행 높이를 샘플링하며, `--text` matrix가 없으면 기존 병합 텍스트를 top-left 셀에 보존한다.
 - 병합 산출물을 다시 split하는 왕복 smoke에서 physical cell 9 -> 12, row/column 3x4 유지, layout/content pass, 직접 XML 기준 네 셀 `cellSpan=1x1` 복원을 확인했다.
+- `table-cell-style-package` 명령으로 기존 `Contents/header.xml`에 정의된 borderFill ID를 셀 또는 직사각형 범위에 적용한다. 선택 범위와 span이 교차하는 셀을 대상으로 하므로 병합셀 내부 covered coordinate를 선택해도 top-left 병합셀 스타일이 바뀐다.
+- 실제 제출서식 smoke에서 top-level table 4의 row 1/column 1 셀 borderFillIDRef를 16 -> 32로 바꾸고 layout pass와 직접 XML 검증을 확인했다. 존재하지 않는 borderFill ID 9999는 적용 전에 실패한다.
 
 개발 단위:
 
@@ -217,7 +219,7 @@
    - overlap validator 강화.
 
 4. table style operations
-   - border/background.
+   - border/background. (partially implemented: `table-cell-style-package` existing borderFill apply)
    - diagonal line.
    - paragraph alignment, vertical alignment.
 
