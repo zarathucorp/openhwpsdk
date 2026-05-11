@@ -34,6 +34,7 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Web" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
@@ -42,6 +43,9 @@
     <Compile Include="HwpxFormMap.cs" />
     <Compile Include="HwpxContentValidator.cs" />
     <Compile Include="HwpxLayoutValidator.cs" />
+    <Compile Include="HwpxPackageImageInserter.cs" />
+    <Compile Include="HwpxTableModel.cs" />
+    <Compile Include="HwpxTextStyleGuard.cs" />
     <Compile Include="HwpxTextLayoutHelper.cs" />
     <Compile Include="ComOperationWatchdog.cs" />
     <Compile Include="MarkdownTableParser.cs" />

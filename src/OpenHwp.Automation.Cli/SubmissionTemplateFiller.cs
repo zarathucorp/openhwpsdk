@@ -19,7 +19,7 @@ namespace OpenHwp.Automation.Cli
         private static readonly Regex MultiWhitespacePattern = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MarkdownImagePattern = new Regex(@"!\[([^\]]*)\]\(([^)]+)\)", RegexOptions.Compiled);
         private static readonly Regex MarkdownTableSeparatorPattern = new Regex(@"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", RegexOptions.Compiled);
-        private const int RoadmapOverviewBodyCharPrId = 50;
+        private const int LegacyRoadmapOverviewBodyCharPrId = 50;
         private const int DefaultMarkdownImageWidth = 135;
         private const int DefaultMarkdownImageHeight = 80;
         private const int ExpectedProfileTableCount = 48;
@@ -36,6 +36,8 @@ namespace OpenHwp.Automation.Cli
         private readonly string _templatePath;
         private readonly IDictionary<string, byte[]> _entries;
         private readonly XDocument _section;
+        private readonly HwpxTextStyleGuard _textStyleGuard;
+        private readonly int? _roadmapOverviewBodyCharPrIdRef;
         private readonly FillReport _report = new FillReport();
         private int _nextImageAnchorIndex;
         private long _nextGeneratedObjectId;
@@ -50,6 +52,8 @@ namespace OpenHwp.Automation.Cli
             _tables = MarkdownTableParser.ParseTables(_markdown);
             _imageReferences = ParseMarkdownImages(_markdown);
             _entries = SimpleZipArchive.ReadAll(_templatePath);
+            _textStyleGuard = HwpxTextStyleGuard.Create(_entries);
+            _roadmapOverviewBodyCharPrIdRef = _textStyleGuard.NormalizeRequestedCharPrId(LegacyRoadmapOverviewBodyCharPrId);
 
             byte[] sectionBytes;
             if (!_entries.TryGetValue("Contents/section0.xml", out sectionBytes))
@@ -230,14 +234,15 @@ namespace OpenHwp.Automation.Cli
                 { 3, CellProjection.Column(2) }
             }, 1);
 
-            RebuildTableDataRows(12, 2, TableRowsAfterHeader(17), new Dictionary<int, CellProjection>
+            RebuildTableDataRows(12, 2, TableRowsAfterHeader(17), new[]
             {
-                { 0, CellProjection.Column(0) },
-                { 1, CellProjection.Column(1) },
-                { 2, CellProjection.Column(2) },
-                { 3, CellProjection.Column(4) },
-                { 4, CellProjection.Column(3) },
-                { 5, CellProjection.Func(row => Cell(row, 4).Contains("수행중") ? "수행중" : (Cell(row, 4).Contains("완료") ? "완료" : string.Empty)) }
+                RowGroupCellProjection.At(0, 0, CellProjection.Column(0)),
+                RowGroupCellProjection.At(0, 1, CellProjection.Func(LeadResearchOrganizationName)),
+                RowGroupCellProjection.At(1, 1, CellProjection.Func(ResearchOrganizationRole)),
+                RowGroupCellProjection.At(0, 2, CellProjection.Column(2)),
+                RowGroupCellProjection.At(0, 3, CellProjection.Column(4)),
+                RowGroupCellProjection.At(0, 4, CellProjection.Column(3)),
+                RowGroupCellProjection.At(0, 5, CellProjection.Func(row => Cell(row, 4).Contains("수행중") ? "수행중" : (Cell(row, 4).Contains("완료") ? "완료" : string.Empty)))
             }, 2);
 
             SetCellText(13, 2, 0, CellValue(18, 1, 0));
@@ -313,7 +318,7 @@ namespace OpenHwp.Automation.Cli
                     "제품화: openstat.ai 유료 구독형 SaaS와 기관 전용 배포형 임상통계 AI agent로 고도화",
                     "차별성: 분석엔진 호출, 데이터 검증, 통계 실행, 보고서 초안, Audit Trail을 단일 흐름으로 제공",
                 },
-                RoadmapOverviewBodyCharPrId);
+                _roadmapOverviewBodyCharPrIdRef);
             SetCellLines(
                 18,
                 9,
@@ -324,7 +329,7 @@ namespace OpenHwp.Automation.Cli
                     "목표: PoC 8건, AI agent 적용 분석 프로젝트 50건, Audit Trail 적용 10건, 매출 2억원",
                     "전략: 기존 병원, 바이오, CRO 고객 기반 PoC 후 구독형, 기관계약형으로 전환",
                 },
-                RoadmapOverviewBodyCharPrId);
+                _roadmapOverviewBodyCharPrIdRef);
             SetCellLines(
                 18,
                 10,
@@ -335,7 +340,7 @@ namespace OpenHwp.Automation.Cli
                     "기반: SCI급 분석지원 경험, 30만 다운로드 오픈소스 생태계, 병원, 바이오 고객 레퍼런스 보유",
                     "확장: 일본, 중국 사용자 기반과 해외 CRO 협력 경험을 활용해 해외 진입 추진",
                 },
-                RoadmapOverviewBodyCharPrId);
+                _roadmapOverviewBodyCharPrIdRef);
             SetCellLines(
                 18,
                 11,
@@ -346,7 +351,7 @@ namespace OpenHwp.Automation.Cli
                     "효과: 분석 리드타임 단축, 검토 이력 확보, 품질 재현성 향상, 반복업무 자동화",
                     "성과: 구독형 SaaS 매출과 기관 전용 구축 매출을 병행해 후속 투자, 고용 기반 확보",
                 },
-                RoadmapOverviewBodyCharPrId);
+                _roadmapOverviewBodyCharPrIdRef);
 
             for (var row = 1; row <= 8; row++)
             {
@@ -360,7 +365,7 @@ namespace OpenHwp.Automation.Cli
                 SetCellText(20, row + 1, 2, CellValue(31, row, 1));
             }
 
-            SetTableTextStyle(20, RoadmapOverviewBodyCharPrId);
+            SetTableTextStyle(20, _roadmapOverviewBodyCharPrIdRef);
         }
 
         private void FillRoadmapNarrative()
@@ -544,8 +549,13 @@ namespace OpenHwp.Automation.Cli
             _report.CellWrites++;
         }
 
-        private void SetTableTextStyle(int tableIndex, int charPrIdRef)
+        private void SetTableTextStyle(int tableIndex, int? charPrIdRef)
         {
+            if (!charPrIdRef.HasValue)
+            {
+                return;
+            }
+
             var table = GetTable(tableIndex);
             if (table == null)
             {
@@ -555,11 +565,21 @@ namespace OpenHwp.Automation.Cli
 
             foreach (var run in table.Descendants(Hp + "run"))
             {
-                run.SetAttributeValue("charPrIDRef", charPrIdRef.ToString(CultureInfo.InvariantCulture));
+                run.SetAttributeValue("charPrIDRef", charPrIdRef.Value.ToString(CultureInfo.InvariantCulture));
             }
+
+            _report.StyleRepairedRuns += _textStyleGuard.EnsureMinimumCharHeight(table);
         }
 
         private void RebuildTableDataRows(int tableIndex, int firstDataRow, IEnumerable<IList<string>> sourceRows, IDictionary<int, CellProjection> columnMap, int templateRowIndex)
+        {
+            var placements = columnMap == null
+                ? Enumerable.Empty<RowGroupCellProjection>()
+                : columnMap.Select(item => RowGroupCellProjection.At(0, item.Key, item.Value));
+            RebuildTableDataRows(tableIndex, firstDataRow, sourceRows, placements, templateRowIndex);
+        }
+
+        private void RebuildTableDataRows(int tableIndex, int firstDataRow, IEnumerable<IList<string>> sourceRows, IEnumerable<RowGroupCellProjection> placements, int templateRowIndex)
         {
             var table = GetTable(tableIndex);
             if (table == null)
@@ -569,34 +589,79 @@ namespace OpenHwp.Automation.Cli
             }
 
             var rows = table.Elements(Hp + "tr").ToList();
+            var originalRowCount = GetInt(table, "rowCnt", rows.Count);
+            var sourceRowList = (sourceRows ?? Enumerable.Empty<IList<string>>()).ToList();
+            var placementList = (placements ?? Enumerable.Empty<RowGroupCellProjection>()).ToList();
             if (templateRowIndex >= rows.Count)
             {
                 _report.MissingTargets.Add("template row table=" + tableIndex.ToString(CultureInfo.InvariantCulture));
                 return;
             }
 
-            var template = new XElement(rows[templateRowIndex]);
+            var rowGroupLength = GetTemplateRowGroupLength(rows, templateRowIndex);
+            var templateRows = rows
+                .Skip(templateRowIndex)
+                .Take(rowGroupLength)
+                .Select(row => new XElement(row))
+                .ToList();
+
             for (var index = rows.Count - 1; index >= firstDataRow; index--)
             {
                 rows[index].Remove();
             }
 
             var rowAddress = firstDataRow;
-            foreach (var sourceRow in sourceRows)
+            foreach (var sourceRow in sourceRowList)
             {
-                var newRow = new XElement(template);
-                UpdateRowAddresses(newRow, rowAddress);
-                foreach (var item in columnMap)
+                for (var rowOffset = 0; rowOffset < templateRows.Count; rowOffset++)
                 {
-                    SetRowCellText(newRow, item.Key, item.Value.Project(sourceRow));
+                    var newRow = new XElement(templateRows[rowOffset]);
+                    UpdateRowAddresses(newRow, rowAddress + rowOffset);
+                    foreach (var item in placementList.Where(item => item.RowOffset == rowOffset))
+                    {
+                        SetRowCellText(newRow, item.ColumnAddress, item.Projection.Project(sourceRow));
+                    }
+
+                    table.Add(newRow);
+                    _report.RebuiltRows++;
                 }
 
-                table.Add(newRow);
-                rowAddress++;
-                _report.RebuiltRows++;
+                rowAddress += templateRows.Count;
             }
 
             table.SetAttributeValue("rowCnt", rowAddress.ToString(CultureInfo.InvariantCulture));
+            _report.RebuiltTableRows.Add(string.Format(
+                CultureInfo.InvariantCulture,
+                "table {0}: rows {1}->{2}, firstDataRow={3}, sourceRows={4}, templateRow={5}, rowGroup={6}",
+                tableIndex,
+                originalRowCount,
+                rowAddress,
+                firstDataRow,
+                sourceRowList.Count,
+                templateRowIndex,
+                templateRows.Count));
+        }
+
+        private static int GetTemplateRowGroupLength(IList<XElement> rows, int templateRowIndex)
+        {
+            if (rows == null || templateRowIndex < 0 || templateRowIndex >= rows.Count)
+            {
+                return 1;
+            }
+
+            var groupLength = 1;
+            foreach (var cell in rows[templateRowIndex].Elements(Hp + "tc"))
+            {
+                var span = cell.Element(Hp + "cellSpan");
+                if (span == null)
+                {
+                    continue;
+                }
+
+                groupLength = Math.Max(groupLength, GetInt(span, "rowSpan", 1));
+            }
+
+            return Math.Min(groupLength, rows.Count - templateRowIndex);
         }
 
         private void SetRowCellText(XElement rowNode, int columnAddress, string text)
@@ -814,13 +879,7 @@ namespace OpenHwp.Automation.Cli
                 return null;
             }
 
-            return table.Descendants(Hp + "tc").FirstOrDefault(cell =>
-            {
-                var addr = cell.Element(Hp + "cellAddr");
-                return addr != null &&
-                       GetInt(addr, "rowAddr", -1) == rowAddress &&
-                       GetInt(addr, "colAddr", -1) == columnAddress;
-            });
+            return HwpxTableModel.FindDirectCellByAddress(table, rowAddress, columnAddress);
         }
 
         private IEnumerable<XElement> RootParagraphs()
@@ -830,8 +889,7 @@ namespace OpenHwp.Automation.Cli
 
         private static IEnumerable<XElement> GetDirectCellParagraphs(XElement cell)
         {
-            var subList = cell.Element(Hp + "subList");
-            return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
+            return HwpxTableModel.GetDirectCellParagraphs(cell);
         }
 
         private IList<BlockItem> NormalizeBlockItems(string block)
@@ -1189,7 +1247,7 @@ namespace OpenHwp.Automation.Cli
 
         private static string NormalizeMarkdownTableMode(string value)
         {
-            return string.Equals(value, "render", StringComparison.OrdinalIgnoreCase) ? "render" : "text";
+            return string.Equals(value, "text", StringComparison.OrdinalIgnoreCase) ? "text" : "render";
         }
 
         private static bool IsMarkdownTableSeparator(string tableLine)
@@ -1322,26 +1380,76 @@ namespace OpenHwp.Automation.Cli
         private XElement FindMarkdownTableReference(int columnCount)
         {
             var tables = _section.Descendants(Hp + "tbl")
+                .Where(table => !table.Ancestors(Hp + "tbl").Any())
                 .Where(table => !HasMergedCells(table) && table.Elements(Hp + "tr").Count() >= 2)
                 .ToList();
 
-            return tables.FirstOrDefault(table => MaxColumnCount(table) == columnCount) ??
-                   tables.FirstOrDefault(table => MaxColumnCount(table) > columnCount) ??
-                   tables.FirstOrDefault();
+            return tables
+                .Select((table, index) => new MarkdownTableReferenceCandidate(table, index, columnCount))
+                .OrderBy(candidate => candidate.Score)
+                .ThenBy(candidate => candidate.Index)
+                .Select(candidate => candidate.Table)
+                .FirstOrDefault();
+        }
+
+        private static int ScoreMarkdownTableReference(XElement table, int requestedColumnCount)
+        {
+            var columnCount = MaxColumnCount(table);
+            var firstLabel = CellText(HwpxTableModel.DirectCells(table).FirstOrDefault());
+            var score = 0;
+
+            if (columnCount == requestedColumnCount)
+            {
+                score += 0;
+            }
+            else if (columnCount > requestedColumnCount)
+            {
+                score += 20 + (columnCount - requestedColumnCount);
+            }
+            else
+            {
+                score += 100 + (requestedColumnCount - columnCount);
+            }
+
+            if (IsGuideLikeTableLabel(firstLabel))
+            {
+                score += 1000;
+            }
+
+            if (!IsGenericDefaultTableLabel(firstLabel))
+            {
+                score += 10;
+            }
+
+            score += Math.Min(20, table.Elements(Hp + "tr").Count());
+            return score;
+        }
+
+        private static bool IsGuideLikeTableLabel(string value)
+        {
+            var label = NormalizeInline(value);
+            return label.Contains("작성 요령") ||
+                   label.StartsWith("※", StringComparison.Ordinal) ||
+                   label.StartsWith("F ", StringComparison.Ordinal);
+        }
+
+        private static bool IsGenericDefaultTableLabel(string value)
+        {
+            var label = NormalizeInline(value);
+            return string.Equals(label, "구분", StringComparison.Ordinal) ||
+                   string.Equals(label, "항목", StringComparison.Ordinal) ||
+                   string.Equals(label, "기간", StringComparison.Ordinal) ||
+                   string.Equals(label, "내용", StringComparison.Ordinal);
         }
 
         private static bool HasMergedCells(XElement table)
         {
-            return table.Descendants(Hp + "tc").Any(cell =>
-            {
-                var span = cell.Element(Hp + "cellSpan");
-                return span != null && (GetInt(span, "rowSpan", 1) > 1 || GetInt(span, "colSpan", 1) > 1);
-            });
+            return HwpxTableModel.HasMergedCells(table);
         }
 
         private static int MaxColumnCount(XElement table)
         {
-            return table.Elements(Hp + "tr").Select(row => row.Elements(Hp + "tc").Count()).DefaultIfEmpty(0).Max();
+            return HwpxTableModel.BuildGrid(table).ColumnCount;
         }
 
         private static string CellText(XElement cell)
@@ -1351,13 +1459,7 @@ namespace OpenHwp.Automation.Cli
                 return string.Empty;
             }
 
-            var builder = new StringBuilder();
-            foreach (var textNode in cell.Descendants(Hp + "t"))
-            {
-                builder.Append(textNode.Value);
-            }
-
-            return builder.ToString().Trim();
+            return HwpxTableModel.DirectTextOfCell(cell).Trim();
         }
 
         private static string Abbreviate(string text, int maxLength)
@@ -1385,7 +1487,11 @@ namespace OpenHwp.Automation.Cli
 
             return table == null
                 ? 0
-                : table.Descendants(Hp + "cellSz").Select(cell => GetInt(cell, "width", 0)).DefaultIfEmpty(0).Max();
+                : HwpxTableModel.DirectCells(table).Select(cell =>
+                {
+                    var size = cell.Element(Hp + "cellSz");
+                    return size == null ? 0 : GetInt(size, "width", 0);
+                }).DefaultIfEmpty(0).Max();
         }
 
         private static IList<int> BuildMarkdownTableColumnWidths(XElement referenceTable, int columnCount, int tableWidth)
@@ -1426,7 +1532,7 @@ namespace OpenHwp.Automation.Cli
             return value.ToString(CultureInfo.InvariantCulture);
         }
 
-        private static void SetParagraphNodeText(XElement paragraph, string text, int? charPrIdRef = null)
+        private void SetParagraphNodeText(XElement paragraph, string text, int? charPrIdRef = null)
         {
             var textNodes = paragraph.Descendants(Hp + "t").ToList();
             XElement firstTextNode;
@@ -1458,7 +1564,7 @@ namespace OpenHwp.Automation.Cli
 
             if (charPrIdRef.HasValue)
             {
-                foreach (var run in paragraph.Elements(Hp + "run"))
+                foreach (var run in paragraph.Descendants(Hp + "run"))
                 {
                     run.SetAttributeValue("charPrIDRef", charPrIdRef.Value.ToString(CultureInfo.InvariantCulture));
                 }
@@ -1471,6 +1577,7 @@ namespace OpenHwp.Automation.Cli
             }
 
             paragraph.Elements(Hp + "linesegarray").Remove();
+            _report.StyleRepairedRuns += _textStyleGuard.EnsureMinimumCharHeight(paragraph);
         }
 
         private IList<string> NormalizeBlockLines(string block)
@@ -1601,6 +1708,29 @@ namespace OpenHwp.Automation.Cli
         private static string Cell(IList<string> row, int columnIndex)
         {
             return columnIndex >= 0 && columnIndex < row.Count ? row[columnIndex] ?? string.Empty : string.Empty;
+        }
+
+        private static string LeadResearchOrganizationName(IList<string> row)
+        {
+            var value = NormalizeInline(Cell(row, 1));
+            var match = Regex.Match(value, @"(?:^|/)\s*주관\s*:\s*([^/]+)", RegexOptions.CultureInvariant);
+            if (match.Success)
+            {
+                return match.Groups[1].Value.Trim();
+            }
+
+            var firstPart = value.Split('/').Select(item => item.Trim()).FirstOrDefault(item => item.Length > 0);
+            if (string.IsNullOrWhiteSpace(firstPart))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(firstPart, @"^(주관|공동)\s*:\s*", string.Empty).Trim();
+        }
+
+        private static string ResearchOrganizationRole(IList<string> row)
+        {
+            return NormalizeInline(Cell(row, 1));
         }
 
         private static bool IsSummaryRow(IList<string> row)
@@ -1756,7 +1886,7 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- markdown tables converted to text: " + fillReport.MarkdownTablesConvertedToText.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown table rows rendered: " + fillReport.RenderedMarkdownTableRows.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- markdown images: " + fillReport.MarkdownImages.ToString(CultureInfo.InvariantCulture));
-            report.AppendLine("- image anchors queued for HWP COM: " + mappedImageCount.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- image anchors queued for insertion: " + mappedImageCount.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- image writes applied: " + appliedImages.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- image writes failed: " + failedImages.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- image writes pending: " + pendingImages.ToString(CultureInfo.InvariantCulture));
@@ -1765,6 +1895,8 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- paragraph writes: " + fillReport.ParagraphWrites.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- inserted paragraphs: " + fillReport.InsertedParagraphs.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- rebuilt rows: " + fillReport.RebuiltRows.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- rebuilt table row changes: " + fillReport.RebuiltTableRows.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- style guard repaired runs: " + fillReport.StyleRepairedRuns.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- missing targets: " + fillReport.MissingTargets.Count.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- skipped unsafe: " + fillReport.SkippedUnsafe.Count.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- skipped unsupported: " + fillReport.SkippedUnsupported.Count.ToString(CultureInfo.InvariantCulture));
@@ -1791,6 +1923,16 @@ namespace OpenHwp.Automation.Cli
                     {
                         report.AppendLine("- " + table);
                     }
+                }
+            }
+
+            if (fillReport.RebuiltTableRows.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Rebuilt Table Rows");
+                foreach (var item in fillReport.RebuiltTableRows)
+                {
+                    report.AppendLine("- " + item);
                 }
             }
 
@@ -1851,7 +1993,7 @@ namespace OpenHwp.Automation.Cli
                 report.AppendLine();
                 report.AppendLine("## Markdown Images Not Mapped");
                 report.AppendLine();
-                report.AppendLine("These image references were present in the Markdown source but were not queued for HWP COM insertion by the current profile.");
+                report.AppendLine("These image references were present in the Markdown source but were not queued for image insertion by the current profile.");
                 foreach (var item in unmappedImages)
                 {
                     report.AppendLine("- line " + item.LineNumber.ToString(CultureInfo.InvariantCulture) + ": " + item.SourcePath);
@@ -2102,9 +2244,13 @@ namespace OpenHwp.Automation.Cli
 
             public int RebuiltRows { get; set; }
 
+            public int StyleRepairedRuns { get; set; }
+
             public TemplateCompatibilityReport TemplateCompatibility { get; set; }
 
             public IList<string> AssetRoots { get; private set; }
+
+            public IList<string> RebuiltTableRows { get; private set; }
 
             public IList<string> MissingTargets { get; private set; }
 
@@ -2120,6 +2266,7 @@ namespace OpenHwp.Automation.Cli
             {
                 MarkdownTableMode = "text";
                 AssetRoots = new List<string>();
+                RebuiltTableRows = new List<string>();
                 MissingTargets = new List<string>();
                 SkippedUnsafe = new List<string>();
                 SkippedUnsupported = new List<string>();
@@ -2282,6 +2429,43 @@ namespace OpenHwp.Automation.Cli
             {
                 return _projector == null ? Cell(row, _columnIndex) : _projector(row);
             }
+        }
+
+        private sealed class RowGroupCellProjection
+        {
+            private RowGroupCellProjection(int rowOffset, int columnAddress, CellProjection projection)
+            {
+                RowOffset = rowOffset;
+                ColumnAddress = columnAddress;
+                Projection = projection;
+            }
+
+            public static RowGroupCellProjection At(int rowOffset, int columnAddress, CellProjection projection)
+            {
+                return new RowGroupCellProjection(rowOffset, columnAddress, projection);
+            }
+
+            public int RowOffset { get; private set; }
+
+            public int ColumnAddress { get; private set; }
+
+            public CellProjection Projection { get; private set; }
+        }
+
+        private sealed class MarkdownTableReferenceCandidate
+        {
+            public MarkdownTableReferenceCandidate(XElement table, int index, int requestedColumnCount)
+            {
+                Table = table;
+                Index = index;
+                Score = ScoreMarkdownTableReference(table, requestedColumnCount);
+            }
+
+            public XElement Table { get; private set; }
+
+            public int Index { get; private set; }
+
+            public int Score { get; private set; }
         }
     }
 }

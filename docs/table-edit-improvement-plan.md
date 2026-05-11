@@ -1,5 +1,7 @@
 # Table Edit Improvement Plan
 
+Status note: this is a historical design note for inaccurate HWP table-cell targeting, especially COM workflows that rely on `tableIndex + row/col` moves. Since this note was written, the HWPX package path gained a merge/nested-table-aware table model for form-map extraction and the submission-template filler. That newer HWPX path reconstructs grids from `cellAddr` plus `cellSpan`, separates parent-cell direct text from nested table text, and clones multi-row record groups when expanding known profile tables. The COM-side label resolver and generic `dump-table` / `table-get` / `table-set-by-label` APIs described below are still future work.
+
 ## 배경
 
 `test/1` 문서에 마크다운 내용을 적용하는 과정에서 표 셀을 정확히 선택하지 못하는 문제가 확인됐다.

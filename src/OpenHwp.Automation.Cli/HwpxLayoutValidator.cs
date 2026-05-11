@@ -59,9 +59,20 @@ namespace OpenHwp.Automation.Cli
                 candidateIndex = matchedIndex + 1;
                 var rowChanged = Math.Abs(current.RowCount - original.RowCount);
 
-                if (rowChanged > Math.Max(3, original.RowCount))
+                foreach (var overlapIssue in current.GridOverlapIssues)
                 {
-                    var message = string.Format("table {0} row count changed heavily: {1}->{2}", index, original.RowCount, current.RowCount);
+                    issues.Add(LayoutIssue.Blocking(string.Format(
+                        "table {0} has overlapping cell spans: {1}",
+                        index,
+                        overlapIssue)));
+                }
+
+                if (rowChanged > 0)
+                {
+                    var heavyChange = rowChanged > Math.Max(3, original.RowCount);
+                    var message = heavyChange
+                        ? string.Format("table {0} row count changed heavily: {1}->{2}", index, original.RowCount, current.RowCount)
+                        : string.Format("table {0} row count changed: {1}->{2}", index, original.RowCount, current.RowCount);
                     issues.Add(options.AllowedRowGrowthTables.Contains(index)
                         ? LayoutIssue.ExpectedChange(message)
                         : LayoutIssue.ReviewNeeded(message));
@@ -180,13 +191,15 @@ namespace OpenHwp.Automation.Cli
             foreach (var table in document.Descendants(Hp + "tbl"))
             {
                 var size = table.Element(Hp + "sz");
+                var grid = HwpxTableModel.BuildGrid(table);
                 yield return new TableSignature
                 {
                     RowCount = GetInt(table, "rowCnt", table.Elements(Hp + "tr").Count()),
-                    ColumnCount = GetInt(table, "colCnt", MaxColumnCount(table)),
+                    ColumnCount = GetInt(table, "colCnt", grid.ColumnCount),
                     Width = size == null ? 0 : GetInt(size, "width", 0),
                     BorderFillId = GetString(table, "borderFillIDRef"),
-                    FirstLabels = table.Descendants(Hp + "tc")
+                    GridOverlapIssues = grid.OverlapIssues.ToList(),
+                    FirstLabels = HwpxTableModel.DirectCells(table)
                         .Take(8)
                         .Select(CellText)
                         .Where(text => !string.IsNullOrWhiteSpace(text))
@@ -242,20 +255,9 @@ namespace OpenHwp.Automation.Cli
             return drift;
         }
 
-        private static int MaxColumnCount(XElement table)
-        {
-            return table.Elements(Hp + "tr").Select(row => row.Elements(Hp + "tc").Count()).DefaultIfEmpty(0).Max();
-        }
-
         private static string CellText(XElement cell)
         {
-            var builder = new StringBuilder();
-            foreach (var textNode in cell.Descendants(Hp + "t"))
-            {
-                builder.Append(textNode.Value);
-            }
-
-            return builder.ToString().Trim();
+            return HwpxTableModel.DirectTextOfCell(cell).Trim();
         }
 
         private static string GetString(XElement element, string attributeName)
@@ -342,6 +344,8 @@ namespace OpenHwp.Automation.Cli
             public string BorderFillId { get; set; }
 
             public IList<string> FirstLabels { get; set; }
+
+            public IList<string> GridOverlapIssues { get; set; }
         }
 
         private sealed class ParagraphSignature

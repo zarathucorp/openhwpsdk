@@ -8,20 +8,22 @@ This note supersedes the first-run issue log for filling the submission template
 
 - COM calls now have a default timeout guard through `ComOperationWatchdog`, plus `--com-timeout-ms` and `--no-com-timeout`.
 - `diagnose-com [inputPath]` reports HWP process state, COM registration, HWP version, visibility, file-path checker registration, message box mode, and optional document-open success.
-- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir] [--markdown-table-mode text|render]` exists for this submission form.
+- `fill-submission-template <template.hwpx> <source.md> <output.hwpx> [--profile r-and-d-startup-2026] [--report report.md] [--asset-root dir] [--markdown-table-mode text|render] [--image-mode package|com|none]` exists for this submission form.
 - `extract-form-map` still creates a whole-package map, and `probe-form-map` still verifies HWP-selectability before editor-backed writes.
 - `apply-form-map --package` now supports text-only package writes, writes apply details when `--report` is supplied, and writes package-layout validation to a sibling `*.layout.md` report.
 - `SimpleZipArchive.WriteAllPreservingTemplate` now provides the core package writer that preserves template entry order, compression method, timestamps, and untouched entries.
 - `validate-content` exists for required strings, Markdown-artifact checks, unresolved placeholder checks, repeated guide-like text warnings, and possible overflow warnings.
 - `HwpSession.Open` falls back to a temporary ASCII-like copy path when HWP COM fails to open the original path.
 - Image insertion through HWP automation now passes `sizeOption=1` for table-cell and text-anchor image writes so requested dimensions are honored.
-- The `r-and-d-startup-2026` profile renders supported body Markdown tables as HWPX table objects and queues supported Markdown image lines for HWP COM `InsertPicture`.
-- The fill report now includes template/profile compatibility, observed key table signatures, configured asset roots, resolved image paths, missing image candidate paths, and grouped missing-target causes.
+- The `r-and-d-startup-2026` profile renders supported body Markdown tables as HWPX table objects and queues supported Markdown image lines for package-level `BinData`/`hp:pic` insertion by default. HWP COM insertion remains available through `--image-mode com`.
+- The profile-specific package image writer embeds original image files, adds `BinData`/`hp:pic`/manifest entries, sizes display objects from image DPI with a 96-DPI fallback, and scales down only when the natural 100% size exceeds the document body area.
+- The fill report now includes template/profile compatibility, observed key table signatures, configured asset roots, resolved image paths, missing image candidate paths, image write results, and grouped missing-target causes.
 - `validate-layout` classifies findings as `expected-change`, `review-needed`, or `blocking`, and supports intentional table row-growth allowlists.
 - Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor index drift.
 - Package text writes normalize target runs that would otherwise inherit `charPr` below 7pt, and COM table-cell writes set 10pt before `InsertText`.
-- Body Markdown tables in the submission profile default to text conversion. `--markdown-table-mode render` keeps the older behavior that inserts new HWPX table objects.
+- Body Markdown tables in the submission profile default to rendered HWPX table objects. `--markdown-table-mode text` keeps the conservative behavior that converts new Markdown tables into text lines.
 - Package cell writes validate the extracted `currentText` by default before replacing text, with `validateCurrentText="false"` as an explicit escape hatch.
+- Form-map extraction and submission table filling are merge/nested-table aware: grids are reconstructed from `cellAddr` plus `cellSpan`, parent-cell direct text is separated from nested table text, and row-group cloning preserves multi-row records such as the main R&D performance table.
 
 ## Resolved Or Mostly Resolved
 
@@ -48,7 +50,7 @@ What changed:
 
 - `fill-submission-template` is now a supported CLI command.
 - The command has an explicit `r-and-d-startup-2026` profile and produces a report with template compatibility, cell writes, paragraph writes, rebuilt rows, Markdown table/image counts, table handling mode, rendered/converted table counts, image-anchor counts, resolved image paths, image write results, missing targets, grouped missing-target causes, skipped unsafe targets, and unmapped image references.
-- The implementation fills the existing template package instead of rebuilding the official form from scratch, then uses a HWP COM post-pass for queued image anchors when images are present.
+- The implementation fills the existing template package instead of rebuilding the official form from scratch. It inserts queued image anchors through the profile-specific package image writer by default, while `--image-mode com` remains available for HWP editor-backed insertion.
 
 Remaining gap:
 
@@ -65,11 +67,11 @@ What changed:
 - `SimpleZipArchive` now reads and writes HWPX/ZIP packages.
 - `WriteAllPreservingTemplate` preserves the original package and replaces only changed entries.
 - `apply-form-map --package` applies text writes without HWP COM, writes apply attempted/applied/failed/skipped rows when `--report` is supplied, and writes layout validation to a sibling `*.layout.md` report.
-- `fill-submission-template` writes text and supported Markdown table content through the package-preserving path, then uses HWP COM for queued Markdown images.
+- `fill-submission-template` writes text and supported Markdown table content through the package-preserving path, then inserts queued Markdown images through the profile-specific package image writer by default.
 
 Remaining gap:
 
-- Package mode intentionally skips image writes as unsafe, reports them as skipped, and returns nonzero when unsafe/image writes are present. Images still require the HWP automation path.
+- Generic `apply-form-map --package` still skips image writes as unsafe, reports them as skipped, and returns nonzero when unsafe/image writes are present. This does not apply to the narrower `fill-submission-template --image-mode package` path, which has a tested profile-specific image inserter.
 - Package-mode text anchors are now applied from later paragraphs toward earlier paragraphs, but a richer section-scoped anchor resolver is still needed for heavily duplicated text.
 
 ### 4. Cell text replacement must preserve nested tables and non-target paragraphs
@@ -110,7 +112,7 @@ What changed:
 - `SubmissionTemplateFiller.NormalizeBlockLines` still removes unsupported inline Markdown artifacts for plain-text summaries and preview text.
 - Markdown list lines are normalized into the blank-template body style (`circle` style lines and indented dash detail lines).
 - Profile body blocks now preserve Markdown table semantics and render supported Markdown tables as HWPX `tbl/tr/tc` objects cloned from existing template table style.
-- The profile now defaults body Markdown tables to text conversion to preserve the original HWPX table count. `--markdown-table-mode render` still renders supported Markdown tables as HWPX `tbl/tr/tc` objects cloned from existing template table style.
+- The profile now defaults body Markdown tables to rendered HWPX `tbl/tr/tc` objects. The renderer chooses the simplest unmerged top-level table style available in the template; `--markdown-table-mode text` is still available when preserving the original HWPX table count is more important.
 - The fill report counts total Markdown tables, rendered HWP tables, text-converted tables, and rendered table rows.
 
 Remaining gap:
@@ -156,13 +158,14 @@ Status: resolved for the supported image insertion paths.
 
 What changed:
 
-- `InsertPictureInTableCell` and `InsertPictureAtTextAnchor` now call `InsertPicture` with `sizeOption=1`.
-- Supported `fill-submission-template` image lines are routed to temporary text anchors and then to HWP COM `InsertPicture`.
+- `InsertPictureInTableCell` and `InsertPictureAtTextAnchor` call `InsertPicture` with `sizeOption=1` when `--image-mode com` is used.
+- Supported `fill-submission-template` image lines are routed to temporary text anchors and then replaced by package-level `hp:pic` objects by default.
+- Package-level profile images are displayed at natural 100% size based on DPI, with 96 DPI as fallback, and are proportionally reduced to the document body area when needed.
 
 Remaining gap:
 
-- Package-mode image insertion is still intentionally unsupported.
-- Image insertion still depends on a healthy local HWP COM session. If COM hangs at `Create HWP COM instance`, fix the local HWP process state before retrying, then verify the result with content validation and PDF export.
+- Generic package-map image insertion is still intentionally unsupported.
+- `--image-mode com` still depends on a healthy local HWP COM session. If COM hangs at `Create HWP COM instance`, fix the local HWP process state before retrying, then verify the result with content validation and PDF export.
 
 ### 10. HWP COM open fails on some Korean/special-character paths
 
@@ -216,18 +219,19 @@ Recommended next step:
 - Avoid copying console-mojibake text into tracked files.
 - Prefer `-LiteralPath`-safe examples for Korean or bracketed filenames.
 
-### D. Generic package image writes are intentionally unsupported
+### D. Generic package-map image writes are intentionally unsupported
 
 Current state:
 
 - HWP automation can insert images.
-- Package mode skips image writes because embedding binary image resources and drawing-object XML safely requires more than replacing text nodes.
-- `apply-form-map --report` writes attempted/applied/failed/skipped details for HWP COM mode and package mode. Package mode records image writes as skipped and writes layout validation to a sibling `*.layout.md` report.
+- `apply-form-map --package` skips generic map image writes because arbitrary binary image resources and drawing-object XML require more context than replacing text nodes.
+- The submission profile is the exception: `fill-submission-template --image-mode package` has a narrow package-level image inserter for its own generated text anchors.
+- `apply-form-map --report` writes attempted/applied/failed/skipped details for HWP COM mode and package mode. Generic package mode records image writes as skipped and writes layout validation to a sibling `*.layout.md` report.
 
 Recommended next step:
 
-- Keep image writes on the HWP automation path until a tested package-level image writer exists.
-- If package-level image support is added, validate binary part insertion, manifest updates, object IDs, dimensions, and PDF render output.
+- Keep generic map image writes on the HWP automation path until a generalized package-level image writer exists.
+- If generic package-level image support is added, validate binary part insertion, manifest updates, object IDs, dimensions, and PDF render output.
 
 ## Current Priority Order
 
@@ -236,4 +240,4 @@ Recommended next step:
 3. Improve generic anchor resolution with section-scoped semantic anchors and richer candidate reporting.
 4. Add the staged pipeline / final-promotion commands described in `test/openhwpsdk_개선사항_정리.md`.
 5. Normalize tracked docs and examples to readable UTF-8 Korean.
-6. Add package-level image insertion only after a narrow fixture proves manifest/object/dimension handling is safe.
+6. Generalize package-level image insertion beyond the submission profile only after fixtures prove manifest/object/dimension handling across multiple templates.

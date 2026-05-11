@@ -74,14 +74,16 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map
 For the current submission form, use the dedicated profile command instead of hand-editing every map entry:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --markdown-table-mode text --report "test\out\submission_filled_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --image-mode package --report "test\out\submission_filled_report.md"
 ```
 
-The submission profile queues supported Markdown image lines as text anchors for HWP COM `InsertPicture`. Body Markdown tables default to text conversion to keep the original HWPX table structure stable. Use `--markdown-table-mode render` only when inserted HWPX table objects are acceptable. The report lists template/profile compatibility, configured asset roots, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references. If COM cannot start, the pre-COM report still makes the image work visible.
+The submission profile queues supported Markdown image lines as text anchors, then inserts images with package-level `BinData`/`hp:pic` updates by default. Package image fallback embeds the original image file but computes the displayed object size from the image DPI, falling back to 96 DPI, and scales down only when the natural 100% size would exceed the document body area. This follows the HWP picture insertion behavior of preserving 100% size by default while avoiding body-width overflow. Use `--image-mode com` only when the local HWP COM session is known to be healthy and editor-backed insertion is required. Body Markdown tables default to rendered HWPX table objects using the simplest unmerged top-level table style available in the template; use `--markdown-table-mode text` only when preserving the original table count matters more than table semantics. The report lists template/profile compatibility, configured asset roots, rebuilt table row changes, style-guard repairs, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references.
 
-Package text writes guard against inheriting tiny placeholder character styles. Runs with `charPr` height below 7pt are moved to a normal-size character style, and HWP COM table-cell insertion sets 10pt before `InsertText`. Package cell writes also validate `currentText` by default; set `validateCurrentText="false"` only for deliberate staged rewrites where the original text is expected to differ.
+Form-map table extraction is merge/nested-table aware. Tables expose `gridRows` and `gridCols` computed from `cellAddr` plus `cellSpan`, and each cell's `currentText` contains only direct cell paragraph text. Text from nested tables is separated into `nestedTableText` so parent-cell matching and package writes do not accidentally treat an inner form table as parent-cell body text. When the submission profile rebuilds data rows, it clones the full row group covered by the template row's `rowSpan`; for example, a visible record that spans two XML rows is copied as a two-row unit, not as a single row with dangling spans. Profile projections can target a specific row offset inside that row group, so split headers such as `주관기관명` over `연구개발기관명 및 역할(주관/공동)` are filled into the matching upper and lower cells.
 
-Layout reports classify findings as `expected-change`, `review-needed`, or `blocking`. For intentional row expansion, allow specific table indexes:
+Package text writes guard against inheriting tiny placeholder character styles. Runs with `charPr` height below 7pt are moved to a normal-size character style, and HWP COM table-cell insertion sets 10pt before `InsertText`. The submission profile applies the same guard to its package writes, so a profile constant that points to a tiny template-specific `charPr` is replaced by a normal body style. Package cell writes also validate `currentText` by default; set `validateCurrentText="false"` only for deliberate staged rewrites where the original text is expected to differ.
+
+Layout reports classify findings as `expected-change`, `review-needed`, or `blocking`. Any table row-count change is listed, and overlapping `cellSpan` coverage is blocking because it indicates a visually corrupted merged-cell grid. Intentional row expansion can be allowlisted by table index:
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "test\out\submission_filled.hwpx" "test\out\submission_filled_layout.md" --allow-table-row-change 10
@@ -128,6 +130,8 @@ Use this order instead:
 4. Export both template and candidate to PDF when visual checking is needed.
 5. Render or inspect representative PDF pages.
 
+`validate-layout` exits with `0` when there are no `blocking` findings. A `review-needed` verdict still requires human review, especially for intentional row growth, inserted Markdown tables, image placement, and section-level visual fit. `fill-submission-template` is stricter than `validate-layout`: it returns nonzero when missing targets, skipped or unsupported writes, unmapped Markdown images, failed image writes, or blocking layout findings remain.
+
 ## Commands
 
 Build the CLI:
@@ -169,7 +173,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible expo
 
 ## Acceptance Criteria
 
-- `validate-layout` must exit with `0`.
+- `validate-layout` must have no `blocking` findings; `review-needed` findings must be reviewed rather than treated as a clean pass.
 - `validate-content` should have no failures; warnings must be reviewed.
 - Existing template tables must not be replaced by newly generated generic tables.
 - Table column count, table width, border fill, and leading labels should remain stable unless a specific table is intentionally expanded.

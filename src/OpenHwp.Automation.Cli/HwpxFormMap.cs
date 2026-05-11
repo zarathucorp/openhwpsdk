@@ -697,8 +697,9 @@ namespace OpenHwp.Automation.Cli
         private static XElement ExtractTable(XElement table, string partName, string partRole, int partIndex, int tableIndex, int tableOrderInPart)
         {
             var rows = table.Elements(Hp + "tr").ToList();
-            var cells = rows.SelectMany(row => row.Elements(Hp + "tc")).ToList();
-            var hasMergedCells = cells.Any(IsMergedCell);
+            var grid = HwpxTableModel.BuildGrid(table);
+            var cells = grid.Cells;
+            var hasMergedCells = cells.Any(cell => cell.Merged);
             var size = table.Element(Hp + "sz");
             var tableElement = new XElement(
                 "table",
@@ -711,9 +712,12 @@ namespace OpenHwp.Automation.Cli
                 new XAttribute("tableOrderInPart", tableOrderInPart.ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("writeSupported", "true"),
                 new XAttribute("rows", GetInt(table, "rowCnt", rows.Count).ToString(CultureInfo.InvariantCulture)),
-                new XAttribute("cols", GetInt(table, "colCnt", MaxColumnCount(table)).ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("cols", GetInt(table, "colCnt", grid.ColumnCount).ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("gridRows", grid.RowCount.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("gridCols", grid.ColumnCount.ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("width", (size == null ? 0 : GetInt(size, "width", 0)).ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("borderFillId", GetString(table, "borderFillIDRef")),
+                new XAttribute("nestedTableCount", table.Descendants(Hp + "tbl").Count().ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("hasMergedCells", hasMergedCells ? "true" : "false"));
 
             for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
@@ -727,48 +731,50 @@ namespace OpenHwp.Automation.Cli
                 for (var cellIndex = 0; cellIndex < rowCells.Count; cellIndex++)
                 {
                     var cell = rowCells[cellIndex];
-                    var cellAddr = cell.Element(Hp + "cellAddr");
-                    var cellSpan = cell.Element(Hp + "cellSpan");
                     var cellSz = cell.Element(Hp + "cellSz");
-                    var rowAddress = cellAddr == null ? rowIndex : GetInt(cellAddr, "rowAddr", rowIndex);
-                    var colAddress = cellAddr == null ? cellIndex : GetInt(cellAddr, "colAddr", cellIndex);
-                    var rowSpan = cellSpan == null ? 1 : GetInt(cellSpan, "rowSpan", 1);
-                    var colSpan = cellSpan == null ? 1 : GetInt(cellSpan, "colSpan", 1);
-                    var merged = rowSpan > 1 || colSpan > 1;
+                    var gridCell = grid.Cells.First(item => object.ReferenceEquals(item.Element, cell));
                     var nestedTableCount = cell.Descendants(Hp + "tbl").Count();
-                    var directParagraphCount = GetDirectCellParagraphs(cell).Count();
-                    var firstParagraph = cell.Descendants(Hp + "p").FirstOrDefault();
-                    var firstRun = firstParagraph == null ? null : firstParagraph.Descendants(Hp + "run").FirstOrDefault();
+                    var directParagraphCount = HwpxTableModel.GetDirectCellParagraphs(cell).Count();
+                    var firstParagraph = HwpxTableModel.GetDirectCellParagraphs(cell).FirstOrDefault();
+                    var firstRun = firstParagraph == null ? null : firstParagraph.Elements(Hp + "run").FirstOrDefault();
+                    var cellElement = new XElement(
+                        "cell",
+                        new XAttribute("id", string.Format(CultureInfo.InvariantCulture, "table-{0:000}-r{1:000}-c{2:000}", tableIndex, gridCell.Row, gridCell.Column)),
+                        new XAttribute("tableIndex", tableIndex.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("row", gridCell.Row.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("col", gridCell.Column.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("rowOrder", rowIndex.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("cellOrder", cellIndex.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("rowSpan", gridCell.RowSpan.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("colSpan", gridCell.ColumnSpan.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("merged", gridCell.Merged ? "true" : "false"),
+                        new XAttribute("nestedTableCount", nestedTableCount.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("directParagraphCount", directParagraphCount.ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("borderFillId", GetString(cell, "borderFillIDRef")),
+                        new XAttribute("width", (cellSz == null ? 0 : GetInt(cellSz, "width", 0)).ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("height", (cellSz == null ? 0 : GetInt(cellSz, "height", 0)).ToString(CultureInfo.InvariantCulture)),
+                        new XAttribute("paraPrId", firstParagraph == null ? string.Empty : GetString(firstParagraph, "paraPrIDRef")),
+                        new XAttribute("styleId", firstParagraph == null ? string.Empty : GetString(firstParagraph, "styleIDRef")),
+                        new XAttribute("charPrId", firstRun == null ? string.Empty : GetString(firstRun, "charPrIDRef")),
+                        new XElement("currentText", NormalizeText(HwpxTableModel.DirectTextOfCell(cell))));
 
-                    rowElement.Add(
-                        new XElement(
-                            "cell",
-                            new XAttribute("id", string.Format(CultureInfo.InvariantCulture, "table-{0:000}-r{1:000}-c{2:000}", tableIndex, rowAddress, colAddress)),
-                            new XAttribute("tableIndex", tableIndex.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("row", rowAddress.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("col", colAddress.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("rowOrder", rowIndex.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("cellOrder", cellIndex.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("rowSpan", rowSpan.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("colSpan", colSpan.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("merged", merged ? "true" : "false"),
-                            new XAttribute("nestedTableCount", nestedTableCount.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("directParagraphCount", directParagraphCount.ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("borderFillId", GetString(cell, "borderFillIDRef")),
-                            new XAttribute("width", (cellSz == null ? 0 : GetInt(cellSz, "width", 0)).ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("height", (cellSz == null ? 0 : GetInt(cellSz, "height", 0)).ToString(CultureInfo.InvariantCulture)),
-                            new XAttribute("paraPrId", firstParagraph == null ? string.Empty : GetString(firstParagraph, "paraPrIDRef")),
-                            new XAttribute("styleId", firstParagraph == null ? string.Empty : GetString(firstParagraph, "styleIDRef")),
-                            new XAttribute("charPrId", firstRun == null ? string.Empty : GetString(firstRun, "charPrIDRef")),
-                            new XElement("currentText", NormalizeText(TextOf(cell))),
-                            new XElement("writeText",
-                                new XAttribute("preserveNestedTables", "true"),
-                                new XAttribute("destructive", "false")),
-                            new XElement("writeImage",
-                                new XAttribute("path", string.Empty),
-                                new XAttribute("width", "200"),
-                                new XAttribute("height", "200"),
-                                new XAttribute("clearCell", "true"))));
+                    var nestedText = NormalizeText(HwpxTableModel.NestedTableTextOfCell(cell));
+                    if (!string.IsNullOrWhiteSpace(nestedText))
+                    {
+                        cellElement.Add(new XElement("nestedTableText", nestedText));
+                    }
+
+                    cellElement.Add(
+                        new XElement("writeText",
+                            new XAttribute("preserveNestedTables", "true"),
+                            new XAttribute("destructive", "false")),
+                        new XElement("writeImage",
+                            new XAttribute("path", string.Empty),
+                            new XAttribute("width", "200"),
+                            new XAttribute("height", "200"),
+                            new XAttribute("clearCell", "true")));
+
+                    rowElement.Add(cellElement);
                 }
 
                 tableElement.Add(rowElement);
@@ -1277,13 +1283,7 @@ namespace OpenHwp.Automation.Cli
 
             var row = GetInt(mapCell, "row", -1);
             var col = GetInt(mapCell, "col", -1);
-            targetCell = table.Descendants(Hp + "tc").FirstOrDefault(cell =>
-            {
-                var cellAddr = cell.Element(Hp + "cellAddr");
-                return cellAddr != null &&
-                       GetInt(cellAddr, "rowAddr", -1) == row &&
-                       GetInt(cellAddr, "colAddr", -1) == col;
-            });
+            targetCell = HwpxTableModel.FindDirectCellByAddress(table, row, col);
 
             if (targetCell != null)
             {
@@ -1316,13 +1316,13 @@ namespace OpenHwp.Automation.Cli
                 return true;
             }
 
-            return string.Equals(NormalizeText(TextOf(targetCell)), expected, StringComparison.Ordinal);
+            return string.Equals(NormalizeText(HwpxTableModel.DirectTextOfCell(targetCell)), expected, StringComparison.Ordinal);
         }
 
         private static string DescribeCellTextMismatch(XElement mapCell, XElement targetCell)
         {
             var expected = NormalizeText(mapCell.Element("currentText") == null ? string.Empty : mapCell.Element("currentText").Value);
-            var actual = NormalizeText(TextOf(targetCell));
+            var actual = NormalizeText(HwpxTableModel.DirectTextOfCell(targetCell));
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "expected='{0}', actual='{1}'",
@@ -1412,13 +1412,7 @@ namespace OpenHwp.Automation.Cli
 
         private static XElement GetWritableCellParagraph(XElement cell)
         {
-            return GetDirectCellParagraphs(cell).FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
-        }
-
-        private static IEnumerable<XElement> GetDirectCellParagraphs(XElement cell)
-        {
-            var subList = cell.Element(Hp + "subList");
-            return subList == null ? cell.Elements(Hp + "p") : subList.Elements(Hp + "p");
+            return HwpxTableModel.GetDirectCellParagraphs(cell).FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
         }
 
         private static bool TrySetParagraphText(XElement paragraph, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
@@ -1430,7 +1424,7 @@ namespace OpenHwp.Automation.Cli
                 return false;
             }
 
-            var textNodes = paragraph.Descendants(Hp + "t").ToList();
+            var textNodes = HwpxTableModel.DirectTextNodesOfParagraph(paragraph).ToList();
             XElement firstTextNode;
             if (textNodes.Count == 0)
             {
@@ -1716,20 +1710,9 @@ namespace OpenHwp.Automation.Cli
             return writeImage != null && !string.IsNullOrWhiteSpace(GetString(writeImage, "path"));
         }
 
-        private static bool IsMergedCell(XElement cell)
-        {
-            var cellSpan = cell.Element(Hp + "cellSpan");
-            if (cellSpan == null)
-            {
-                return false;
-            }
-
-            return GetInt(cellSpan, "rowSpan", 1) > 1 || GetInt(cellSpan, "colSpan", 1) > 1;
-        }
-
         private static int MaxColumnCount(XElement table)
         {
-            return table.Elements(Hp + "tr").Select(row => row.Elements(Hp + "tc").Count()).DefaultIfEmpty(0).Max();
+            return HwpxTableModel.BuildGrid(table).ColumnCount;
         }
 
         private static string TextOf(XElement element)

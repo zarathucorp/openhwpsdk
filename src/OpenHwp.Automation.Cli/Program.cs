@@ -849,7 +849,8 @@ namespace OpenHwp.Automation.Cli
         {
             string profile = "r-and-d-startup-2026";
             string reportPath = null;
-            string markdownTableMode = "text";
+            string markdownTableMode = "render";
+            string imageMode = "package";
             var assetRoots = new List<string>();
             var values = new List<string>();
 
@@ -914,12 +915,33 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
+                if (string.Equals(args[index], "--image-mode", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (index + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("Missing value for --image-mode.");
+                        return 1;
+                    }
+
+                    index++;
+                    imageMode = args[index];
+                    if (!string.Equals(imageMode, "package", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(imageMode, "com", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(imageMode, "none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.Error.WriteLine("--image-mode must be package, com, or none.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
                 values.Add(args[index]);
             }
 
             if (values.Count != 3)
             {
-                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render]");
+                Console.Error.WriteLine("Usage: fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");
                 return 1;
             }
 
@@ -931,7 +953,7 @@ namespace OpenHwp.Automation.Cli
 
             var result = SubmissionTemplateFiller.Fill(values[0], values[1], values[2], assetRoots, markdownTableMode);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
-            var imageWritesPassed = ApplySubmissionTemplateImages(result, values[2], visible, keepOpen);
+            var imageWritesPassed = ApplySubmissionTemplateImages(result, values[2], visible, keepOpen, imageMode);
             SubmissionTemplateFiller.WriteReport(result, values[0], values[1], values[2], reportPath);
             Console.WriteLine(values[2]);
             Console.WriteLine("profile=" + profile);
@@ -944,6 +966,7 @@ namespace OpenHwp.Automation.Cli
 
             Console.WriteLine("markdown_tables=" + result.MarkdownTables);
             Console.WriteLine("markdown_table_mode=" + result.MarkdownTableMode);
+            Console.WriteLine("image_mode=" + imageMode);
             Console.WriteLine("markdown_tables_rendered=" + result.RenderedMarkdownTables);
             Console.WriteLine("markdown_tables_converted_to_text=" + result.MarkdownTablesConvertedToText);
             Console.WriteLine("markdown_images=" + result.MarkdownImages);
@@ -954,6 +977,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("paragraph_writes=" + result.ParagraphWrites);
             Console.WriteLine("inserted_paragraphs=" + result.InsertedParagraphs);
             Console.WriteLine("rebuilt_rows=" + result.RebuiltRows);
+            Console.WriteLine("rebuilt_table_row_changes=" + result.RebuiltTableRows.Count);
+            Console.WriteLine("style_guard_repaired_runs=" + result.StyleRepairedRuns);
             Console.WriteLine("missing_targets=" + result.MissingTargets.Count);
             Console.WriteLine("skipped_unsafe=" + result.SkippedUnsafe.Count);
             Console.WriteLine("skipped_unsupported=" + result.SkippedUnsupported.Count);
@@ -971,11 +996,40 @@ namespace OpenHwp.Automation.Cli
                    layoutPassed ? 0 : 2;
         }
 
-        private static bool ApplySubmissionTemplateImages(SubmissionTemplateFiller.FillReport result, string outputPath, bool visible, bool keepOpen)
+        private static bool ApplySubmissionTemplateImages(SubmissionTemplateFiller.FillReport result, string outputPath, bool visible, bool keepOpen, string imageMode)
         {
             if (result.ImageWrites.Count == 0)
             {
                 return result.MarkdownImages == 0;
+            }
+
+            if (string.Equals(imageMode, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var image in result.ImageWrites)
+                {
+                    image.Status = "failed";
+                    image.Note = "image insertion was skipped by --image-mode none";
+                }
+
+                return false;
+            }
+
+            if (string.Equals(imageMode, "package", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    HwpxPackageImageInserter.InsertImagesAtAnchors(outputPath, result.ImageWrites);
+                }
+                catch (Exception ex)
+                {
+                    foreach (var image in result.ImageWrites.Where(item => !string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        image.Status = "failed";
+                        image.Note = "package fallback failed: " + ex.GetType().Name + ": " + ex.Message;
+                    }
+                }
+
+                return result.ImageWrites.All(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase));
             }
 
             try
@@ -1014,6 +1068,22 @@ namespace OpenHwp.Automation.Cli
                 {
                     image.Status = "failed";
                     image.Note = ex.GetType().Name + ": " + ex.Message;
+                }
+            }
+
+            if (!result.ImageWrites.All(item => string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    HwpxPackageImageInserter.InsertImagesAtAnchors(outputPath, result.ImageWrites);
+                }
+                catch (Exception ex)
+                {
+                    foreach (var image in result.ImageWrites.Where(item => !string.Equals(item.Status, "applied", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        image.Status = "failed";
+                        image.Note = image.Note + "; package fallback failed: " + ex.GetType().Name + ": " + ex.Message;
+                    }
                 }
             }
 
@@ -1769,7 +1839,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  markdown-table-list <markdownPath>");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
-            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render]");
+            Console.WriteLine("  fill-submission-template <templateHwpxPath> <sourceMarkdownPath> <outputHwpxPath> [--profile r-and-d-startup-2026] [--report reportMarkdownPath] [--asset-root directory] [--markdown-table-mode text|render] [--image-mode package|com|none]");
             Console.WriteLine("  extract-form-map <templateHwpxPath> <outputXmlPath>");
             Console.WriteLine("  [--visible] [--keep-open] apply-form-map [--package] <inputHwpxPath> <mapXmlPath> <outputHwpxPath> [maxOperations] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-form-map <inputHwpxPath> <mapXmlPath> <reportMarkdownPath> [maxOperations]");
