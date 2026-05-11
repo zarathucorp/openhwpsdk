@@ -194,6 +194,8 @@
 - 실제 제출서식 smoke에서 top-level table 4에 2행을 추가해 3 -> 5행, 1행을 삭제해 3 -> 2행으로 변경했고, `validate-layout --allow-table-row-change 4`에서 expected-change/pass를 확인했다.
 - `table-column-package` 명령으로 같은 안전 범위의 `section0` 표에 열 추가/삭제를 지원한다. 열 변경은 표 폭도 함께 바뀌므로 `validate-layout --allow-table-column-change` 옵션을 추가해 의도된 열/폭 변경을 expected-change로 분류한다.
 - 실제 제출서식 smoke에서 top-level table 4에 1열을 추가해 4 -> 5열, 1열을 삭제해 4 -> 3열로 변경했고, `validate-layout --allow-table-column-change 4`에서 expected-change/pass를 확인했다.
+- `table-merge-package` 명령으로 단순 unmerged top-level 텍스트 셀 표의 직사각형 셀 병합을 지원한다. `--row`/`--column`은 zero-based top-left 셀이고, `--row-span`/`--col-span`은 병합 범위다. 병합 후 표의 row/column count는 유지하고 covered cell만 제거하며 top-left cell에 `cellSpan`과 병합 영역 크기를 기록한다.
+- `--text`가 없으면 병합 범위 안의 기존 셀 텍스트를 row-major 순서로 합친다. 병합 입력은 현재 병합/중첩/sparse/주소 불일치/객체 포함 표를 거부한다.
 
 개발 단위:
 
@@ -208,7 +210,7 @@
    - 기존 table model의 `cellAddr`/`cellSpan` 재계산.
 
 3. merge/split operations
-   - 단순 rectangular merge.
+   - 단순 rectangular merge. (implemented: `table-merge-package`)
    - split back to grid.
    - overlap validator 강화.
 
