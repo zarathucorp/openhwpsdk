@@ -197,7 +197,7 @@ namespace OpenHwp.Automation.Cli
             var mapDirectory = Path.GetDirectoryName(Path.GetFullPath(mapPath)) ?? Directory.GetCurrentDirectory();
             var touchedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new ApplyResult();
-            var textStyleGuard = TextStyleGuard.Create(xmlDocuments);
+            var textStyleGuard = HwpxTextStyleGuard.Create(xmlDocuments);
 
             foreach (var cell in mapDocument.Descendants("cell"))
             {
@@ -1237,7 +1237,7 @@ namespace OpenHwp.Automation.Cli
             ISet<string> touchedParts,
             XElement cell,
             string mapDirectory,
-            TextStyleGuard textStyleGuard,
+            HwpxTextStyleGuard textStyleGuard,
             ApplyResult result,
             int maxOperations)
         {
@@ -1329,7 +1329,7 @@ namespace OpenHwp.Automation.Cli
             ISet<string> touchedParts,
             XElement anchor,
             string mapDirectory,
-            TextStyleGuard textStyleGuard,
+            HwpxTextStyleGuard textStyleGuard,
             ApplyResult result,
             int maxOperations)
         {
@@ -1419,7 +1419,7 @@ namespace OpenHwp.Automation.Cli
             IDictionary<string, XDocument> xmlDocuments,
             ISet<string> touchedParts,
             XElement field,
-            TextStyleGuard textStyleGuard,
+            HwpxTextStyleGuard textStyleGuard,
             ApplyResult result,
             int maxOperations)
         {
@@ -1534,7 +1534,7 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TryApplyPackageCellText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapCell, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             var partPath = ResolveMapPartPath(mapCell);
@@ -1573,7 +1573,7 @@ namespace OpenHwp.Automation.Cli
             return true;
         }
 
-        private static bool TryApplyPackageAnchorText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapAnchor, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TryApplyPackageAnchorText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapAnchor, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             var partPath = ResolveMapPartPath(mapAnchor);
@@ -1607,7 +1607,7 @@ namespace OpenHwp.Automation.Cli
             return true;
         }
 
-        private static bool TryApplyPackageFieldText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapField, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TryApplyPackageFieldText(IDictionary<string, XDocument> xmlDocuments, ISet<string> touchedParts, XElement mapField, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             var partPath = ResolveMapPartPath(mapField);
@@ -1701,7 +1701,7 @@ namespace OpenHwp.Automation.Cli
             int width,
             int height,
             bool clearCell,
-            TextStyleGuard textStyleGuard,
+            HwpxTextStyleGuard textStyleGuard,
             out string reason)
         {
             var partPath = ResolveMapPartPath(mapCell);
@@ -2099,7 +2099,7 @@ namespace OpenHwp.Automation.Cli
             return null;
         }
 
-        private static bool TrySetCellTextPreservingNestedContent(XElement cell, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TrySetCellTextPreservingNestedContent(XElement cell, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             var paragraph = GetWritableCellParagraph(cell);
@@ -2117,7 +2117,7 @@ namespace OpenHwp.Automation.Cli
             return HwpxTableModel.GetDirectCellParagraphs(cell).FirstOrDefault(paragraph => !paragraph.Descendants(Hp + "tbl").Any());
         }
 
-        private static bool TrySetParagraphText(XElement paragraph, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TrySetParagraphText(XElement paragraph, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             if (paragraph == null)
@@ -2166,7 +2166,7 @@ namespace OpenHwp.Automation.Cli
             return true;
         }
 
-        private static bool TrySetFieldText(XElement field, string text, TextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
+        private static bool TrySetFieldText(XElement field, string text, HwpxTextStyleGuard textStyleGuard, out string reason, out int repairedRuns)
         {
             repairedRuns = 0;
             if (field == null)
@@ -2575,129 +2575,6 @@ namespace OpenHwp.Automation.Cli
             }
 
             return value.Substring(0, maxLength - 3) + "...";
-        }
-
-        private sealed class TextStyleGuard
-        {
-            private const int MinimumSafeHeight = 700;
-            private const int PreferredMinimumHeight = 850;
-            private const int PreferredMaximumHeight = 1100;
-            private readonly IDictionary<string, int> _charHeights;
-            private readonly string _fallbackCharPrId;
-
-            private TextStyleGuard(IDictionary<string, int> charHeights, string fallbackCharPrId)
-            {
-                _charHeights = charHeights;
-                _fallbackCharPrId = fallbackCharPrId;
-            }
-
-            public static TextStyleGuard Create(IDictionary<string, XDocument> xmlDocuments)
-            {
-                var charHeights = ReadCharHeights(xmlDocuments);
-                if (charHeights.Count == 0)
-                {
-                    return new TextStyleGuard(charHeights, string.Empty);
-                }
-
-                var usage = CountRunCharPrUsage(xmlDocuments);
-                var fallback = usage
-                    .Where(item => IsPreferredHeight(charHeights, item.Key))
-                    .OrderByDescending(item => item.Value)
-                    .ThenBy(item => item.Key, StringComparer.Ordinal)
-                    .Select(item => item.Key)
-                    .FirstOrDefault();
-
-                if (string.IsNullOrWhiteSpace(fallback))
-                {
-                    fallback = charHeights
-                        .Where(item => item.Value >= MinimumSafeHeight)
-                        .OrderBy(item => Math.Abs(item.Value - 1000))
-                        .ThenBy(item => item.Key, StringComparer.Ordinal)
-                        .Select(item => item.Key)
-                        .FirstOrDefault();
-                }
-
-                return new TextStyleGuard(charHeights, fallback ?? string.Empty);
-            }
-
-            public int EnsureMinimumCharHeight(XElement paragraph)
-            {
-                if (paragraph == null || string.IsNullOrWhiteSpace(_fallbackCharPrId))
-                {
-                    return 0;
-                }
-
-                var changed = 0;
-                foreach (var run in paragraph.Descendants(Hp + "run"))
-                {
-                    var charPrId = GetString(run, "charPrIDRef");
-                    if (string.IsNullOrWhiteSpace(charPrId))
-                    {
-                        continue;
-                    }
-
-                    int height;
-                    if (_charHeights.TryGetValue(charPrId, out height) && height > 0 && height < MinimumSafeHeight)
-                    {
-                        run.SetAttributeValue("charPrIDRef", _fallbackCharPrId);
-                        changed++;
-                    }
-                }
-
-                return changed;
-            }
-
-            private static bool IsPreferredHeight(IDictionary<string, int> charHeights, string charPrId)
-            {
-                int height;
-                return charHeights.TryGetValue(charPrId, out height) &&
-                       height >= PreferredMinimumHeight &&
-                       height <= PreferredMaximumHeight;
-            }
-
-            private static IDictionary<string, int> ReadCharHeights(IDictionary<string, XDocument> xmlDocuments)
-            {
-                var result = new Dictionary<string, int>(StringComparer.Ordinal);
-                foreach (var document in xmlDocuments.Values)
-                {
-                    foreach (var charPr in document.Descendants(Hh + "charPr"))
-                    {
-                        var id = GetString(charPr, "id");
-                        if (string.IsNullOrWhiteSpace(id))
-                        {
-                            continue;
-                        }
-
-                        var height = GetInt(charPr, "height", 0);
-                        if (height > 0 && !result.ContainsKey(id))
-                        {
-                            result.Add(id, height);
-                        }
-                    }
-                }
-
-                return result;
-            }
-
-            private static IDictionary<string, int> CountRunCharPrUsage(IDictionary<string, XDocument> xmlDocuments)
-            {
-                var result = new Dictionary<string, int>(StringComparer.Ordinal);
-                foreach (var document in xmlDocuments.Values)
-                {
-                    foreach (var run in document.Descendants(Hp + "run"))
-                    {
-                        var id = GetString(run, "charPrIDRef");
-                        if (string.IsNullOrWhiteSpace(id))
-                        {
-                            continue;
-                        }
-
-                        result[id] = result.ContainsKey(id) ? result[id] + 1 : 1;
-                    }
-                }
-
-                return result;
-            }
         }
 
         internal sealed class ApplyResult
