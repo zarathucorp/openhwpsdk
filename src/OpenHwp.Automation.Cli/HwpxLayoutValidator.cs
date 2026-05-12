@@ -38,8 +38,8 @@ namespace OpenHwp.Automation.Cli
                 var original = templateTables[index];
                 var allowRowChange = options.AllowedRowGrowthTables.Contains(index);
                 var allowColumnChange = options.AllowedColumnChangeTables.Contains(index);
-                var matchedIndex = allowColumnChange && index < candidateTables.Count
-                    ? (IsAllowedColumnChangeMatch(original, candidateTables[index], allowRowChange) ? index : -1)
+                var matchedIndex = allowColumnChange
+                    ? FindAllowedColumnChangeTable(candidateTables, original, candidateIndex, allowRowChange)
                     : FindMatchingCoreTable(candidateTables, original, candidateIndex);
                 if (matchedIndex < 0)
                 {
@@ -172,6 +172,25 @@ namespace OpenHwp.Automation.Cli
             }
 
             return -1;
+        }
+
+        private static int FindAllowedColumnChangeTable(IList<TableSignature> candidateTables, TableSignature original, int startIndex, bool allowRowChange)
+        {
+            var relaxedIndex = -1;
+            for (var index = startIndex; index < candidateTables.Count; index++)
+            {
+                if (IsCoreTableMatch(original, candidateTables[index]))
+                {
+                    return index;
+                }
+
+                if (relaxedIndex < 0 && IsAllowedColumnChangeMatch(original, candidateTables[index], allowRowChange))
+                {
+                    relaxedIndex = index;
+                }
+            }
+
+            return relaxedIndex;
         }
 
         private static bool IsCoreTableMatch(TableSignature original, TableSignature current)
