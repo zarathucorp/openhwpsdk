@@ -74,19 +74,23 @@ function New-SimpleTableCellXml {
         [int]$Row,
         [int]$Column,
         [string]$Text,
+        [int]$Width,
+        [int]$Height,
         [int]$BorderFillId = 1
     )
 
     $paragraphId = (10 + ($Row * 3) + $Column).ToString()
     return "<hp:tc borderFillIDRef=`"$BorderFillId`">" +
         "<hp:cellAddr rowAddr=`"$Row`" colAddr=`"$Column`"/><hp:cellSpan rowSpan=`"1`" colSpan=`"1`"/>" +
-        "<hp:cellSz width=`"10000`" height=`"3000`"/><hp:cellMargin left=`"200`" right=`"200`" top=`"100`" bottom=`"100`"/>" +
+        "<hp:cellSz width=`"$Width`" height=`"$Height`"/><hp:cellMargin left=`"200`" right=`"200`" top=`"100`" bottom=`"100`"/>" +
         "<hp:subList vertAlign=`"TOP`"><hp:p id=`"$paragraphId`" paraPrIDRef=`"0`"><hp:run charPrIDRef=`"0`"><hp:t>$Text</hp:t></hp:run></hp:p></hp:subList>" +
         "</hp:tc>"
 }
 
 function New-SimpleTableXml {
     $rows = @()
+    $columnWidths = @(8000, 10000, 12000)
+    $rowHeights = @(2500, 3500)
     $labels = @(
         @("A1", "A2", "A3"),
         @("B1", "B2", "B3")
@@ -96,14 +100,16 @@ function New-SimpleTableXml {
         $cells = @()
         for ($column = 0; $column -lt 3; $column++) {
             $borderFillId = if ($row -eq 0) { 2 } else { 1 }
-            $cells += New-SimpleTableCellXml $row $column $labels[$row][$column] $borderFillId
+            $cells += New-SimpleTableCellXml $row $column $labels[$row][$column] $columnWidths[$column] $rowHeights[$row] $borderFillId
         }
         $rows += "<hp:tr>" + ($cells -join "") + "</hp:tr>"
     }
 
+    $tableWidth = ($columnWidths | Measure-Object -Sum).Sum
+    $tableHeight = ($rowHeights | Measure-Object -Sum).Sum
     return "<hp:p id=`"0`" paraPrIDRef=`"0`"><hp:run charPrIDRef=`"0`">" +
         "<hp:tbl id=`"1`" rowCnt=`"2`" colCnt=`"3`" borderFillIDRef=`"1`">" +
-        "<hp:sz width=`"30000`" height=`"6000`"/>" +
+        "<hp:sz width=`"$tableWidth`" height=`"$tableHeight`"/>" +
         ($rows -join "") +
         "</hp:tbl></hp:run></hp:p>"
 }
