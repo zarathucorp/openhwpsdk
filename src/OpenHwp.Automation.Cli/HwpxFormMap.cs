@@ -16,6 +16,7 @@ namespace OpenHwp.Automation.Cli
         private static readonly XNamespace Hh = "http://www.hancom.co.kr/hwpml/2011/head";
         private static readonly XNamespace Hpf = "http://www.hancom.co.kr/schema/2011/hpf";
         private static readonly XNamespace Opf = "http://www.idpf.org/2007/opf/";
+        private const int FormMapPreferredMaximumCharHeight = 1100;
 
         public static void Extract(string templatePath, string outputXmlPath)
         {
@@ -197,7 +198,7 @@ namespace OpenHwp.Automation.Cli
             var mapDirectory = Path.GetDirectoryName(Path.GetFullPath(mapPath)) ?? Directory.GetCurrentDirectory();
             var touchedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new ApplyResult();
-            var textStyleGuard = HwpxTextStyleGuard.Create(xmlDocuments);
+            var textStyleGuard = HwpxTextStyleGuard.Create(xmlDocuments, FormMapPreferredMaximumCharHeight);
 
             foreach (var cell in mapDocument.Descendants("cell"))
             {

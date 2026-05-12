@@ -49,6 +49,11 @@ namespace OpenHwp.Automation.Cli
 
         public static HwpxTextStyleGuard Create(IDictionary<string, XDocument> xmlDocuments)
         {
+            return Create(xmlDocuments, PreferredMaximumHeight);
+        }
+
+        public static HwpxTextStyleGuard Create(IDictionary<string, XDocument> xmlDocuments, int preferredMaximumHeight)
+        {
             var charHeights = ReadCharHeights(xmlDocuments);
             if (charHeights.Count == 0)
             {
@@ -57,7 +62,7 @@ namespace OpenHwp.Automation.Cli
 
             var usage = CountRunCharPrUsage(xmlDocuments);
             var fallback = usage
-                .Where(item => IsPreferredHeight(charHeights, item.Key))
+                .Where(item => IsPreferredHeight(charHeights, item.Key, preferredMaximumHeight))
                 .OrderByDescending(item => item.Value)
                 .ThenBy(item => item.Key, StringComparer.Ordinal)
                 .Select(item => item.Key)
@@ -132,12 +137,12 @@ namespace OpenHwp.Automation.Cli
             return changed;
         }
 
-        private static bool IsPreferredHeight(IDictionary<string, int> charHeights, string charPrId)
+        private static bool IsPreferredHeight(IDictionary<string, int> charHeights, string charPrId, int preferredMaximumHeight)
         {
             int height;
             return charHeights.TryGetValue(charPrId, out height) &&
                    height >= PreferredMinimumHeight &&
-                   height <= PreferredMaximumHeight;
+                   height <= preferredMaximumHeight;
         }
 
         private static IDictionary<string, int> ReadCharHeights(IDictionary<string, XDocument> xmlDocuments)
