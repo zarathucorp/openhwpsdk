@@ -10,7 +10,9 @@
 
 - 현재 repo 기능 근거: `scan-hwpx-features test test\out\hwpx_feature_scan.md`, `Program.cs` CLI 표면, `HwpxFormMap`, `HwpxTableModel`, `HwpxPackageImageInserter`, `HwpxLayoutValidator`.
 - 현재 test corpus 결과: HWPX 69개, package/XML parse error 0, 표 3,049개, 셀 70,558개, 병합셀 20,360개, 중첩표 184개, 그림 94개, 필드/양식 492개, header/footer 4개, note 4개, reference 128개, embedded object 5개.
-- 한컴 공식 도움말 기준:
+- 한컴 공식 SDK/도움말 기준:
+  - [한글 SDK](https://www.hancom.com/product/sdk/hwpSdk): HWP/HWPX 문서 뷰잉, 생성, 열기/저장, HTML/PDF 등 포맷 변환, Text/Image/Table 데이터 삽입/편집, 문서 보안, 문서 비교/병합/이력 관리 기능을 SDK 범주로 제시.
+  - [Hancom SDK 라인업](https://sdk.hancom.com/en): document editing, automation, comparison, Docs Compare SDK, OCR SDK 등을 별도 SDK 범주로 제시.
   - [입력 탭](https://help.hancom.com/hoffice/multi/ko_kr/hwp/view/toolbar/menu_insert.htm): 표, 차트, 도형, 그림, 스크린샷, 글맵시, 수식, 동영상, 문단 띠, 양식 개체, 누름틀, 각주/미주, 책갈피, 상호 참조, 하이퍼링크, 문자표, 한자 입력.
   - [표 메뉴](https://help.hancom.com/hoffice/multi/ko_kr/hwp/menu/table.htm): 표 만들기/그리기, 문자열-표 변환, 표/셀 속성, 테두리/배경, 줄/칸 추가/삭제, 셀 나누기/합치기, 표 계산식.
   - [머리말/꼬리말](https://help.hancom.com/hoffice/multi/ko_kr/hwp/format/header/header.htm): 쪽마다 반복되는 영역이며, 본문과 별개로 문자, 그림, 표, 그리기 개체와 문단/글자 모양을 가질 수 있음.
@@ -51,6 +53,10 @@
 - 표 작성의 전 범위: 새 표 만들기, 표 그리기, 셀 나누기/합치기, 줄/칸 추가/삭제, 테두리/배경, 계산식.
 - 일반 Markdown-to-HWP renderer: 제목, 개요 번호, 목록, 인라인 스타일, 표, 그림, 캡션, 링크를 모두 HWP native 구조로 생성.
 - PDF/시각 회귀 검증 자동화.
+- SDK parity 관점의 문서 보안: 문서 비밀번호, 배포용 문서 제한, 개인정보 텍스트 암호화.
+- SDK parity 관점의 문서 비교/병합/이력 관리: diff report, 병합 결과물 생성, 변경 이력 보존/검증.
+- SDK parity 관점의 포맷 변환: PDF 외 HTML/웹페이지/기타 필터 변환과 변환 결과 검증.
+- SDK parity 관점의 페이지/레이아웃 설정: 용지, 여백, 방향, 단, 구역 나누기, 구역별 쪽 번호 정책.
 
 ## 로드맵
 
@@ -445,6 +451,48 @@
 
 우선순위: P1/P2
 
+### Phase 11. SDK parity backlog
+
+목표: 공식 한글 SDK가 제품 범주로 내세우지만 현재 CLI가 직접 지원하지 않는 기능을 명시적으로 추적하고, 가능한 것은 HWP COM/패키지 래퍼로, 별도 SDK가 필요한 것은 unsupported 상태로 구분한다.
+
+개발 단위:
+
+1. SDK parity matrix
+   - 공식 한글 SDK 범주를 `view/create/open/save/convert/extract-edit/security/compare-merge-history`로 나눈다.
+   - 각 범주에 현재 CLI command, 구현 방식(COM/package), 검증 command, 남은 gap을 매핑한다.
+   - 별도 SDK가 필요한 기능은 CLI backlog와 외부 dependency backlog로 분리한다.
+
+2. format conversion expansion
+   - 현재 `export-pdf` 외 HTML/웹페이지/문서 필터 변환 가능성을 HWP COM action 또는 SDK 경로로 조사한다.
+   - 변환 결과는 파일 존재만 보지 않고 text extraction, page/image presence, 기본 링크/표 보존 여부로 검증한다.
+
+3. document security operations
+   - document password, distribution/read-only document, private-text encryption의 COM action/API 존재 여부를 먼저 확인한다.
+   - 구현 전에는 fixture와 reversible smoke test를 만든다.
+   - 보안 기능은 원본 파일을 직접 덮어쓰지 않고 output-only workflow로 제한한다.
+
+4. document comparison, merge, and history
+   - Hancom SDK 라인업의 comparison 기능과 HWP product 기능을 분리해서 조사한다.
+   - 현재 repo에서 가능한 최소 범위는 text/table/style-aware report인지, 실제 merge output인지 구분한다.
+   - 별도 SDK 없이는 구현할 수 없는 부분은 명확히 unsupported로 표시한다.
+
+5. page setup and section layout
+   - paper size, margin, orientation, columns, section break, section-specific numbering을 inventory/write 대상으로 분리한다.
+   - package writer로 가능한 구조 보존과 HWP COM reflow가 필요한 영역을 구분한다.
+
+6. object placement and form-control completeness
+   - image/shape/form control의 wrap, z-order, anchor, size, crop, rotate, group, lock 속성을 inventory diff 대상으로 추가한다.
+   - radio/combo/edit/button form controls는 checkbox와 별도 write contract를 둔다.
+
+합격 기준:
+
+- `docs/hwp-authoring-feature-roadmap.md` 또는 별도 parity report에서 공식 SDK 범주별 current support/gap/verification command가 한눈에 보인다.
+- 보안/비교/병합/변환 기능은 실제 HWP/SDK에서 열리는 fixture와 output-only smoke test 없이는 implemented로 표시하지 않는다.
+- 별도 Hancom SDK가 필요한 기능은 repo 내부 구현 예정 항목과 외부 라이선스/SDK 의존 항목으로 분리한다.
+- 변환/비교/보안 결과물은 원본 파일을 보존하고, 실패 시 partial output을 명시적으로 report한다.
+
+우선순위: P1/P3
+
 ## 추천 개발 순서
 
 1. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
@@ -458,6 +506,7 @@
 9. Phase 7: equation inventory와 COM insert.
 10. Phase 8: chart/OLE/media preservation.
 11. Phase 9: 일반 Markdown-to-HWP renderer.
+12. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
 
 ## 바로 다음 커밋 후보
 
@@ -483,9 +532,18 @@
 
 이유: 실제 한글 양식 자동화는 좌표/문자열 치환보다 named field/누름틀 fill이 훨씬 안전하다.
 
+### 후보 D: SDK parity matrix
+
+- 공식 한글 SDK 범주와 현재 CLI command를 표로 매핑한다.
+- `export-pdf`, `scan-hwpx-features`, `list-fields`, `list-controls`, table/header/footer commands의 검증 command를 같이 적는다.
+- 문서 보안, 비교/병합/이력 관리, HTML 변환처럼 현재 래퍼가 없는 기능은 unsupported 또는 needs-SDK로 표시한다.
+
+이유: "한글 SDK에는 있는데 우리 프로젝트에는 없는 기능"을 일회성 점검이 아니라 추적 가능한 backlog로 바꿔야 한다.
+
 ## 당장 하지 말아야 할 것
 
 - package XML로 차트/OLE/수식/복잡한 도형을 바로 생성하기.
 - header/footer/각주/누름틀 fixture 없이 구현 완료라고 주장하기.
 - 전체 Markdown 문서를 `replace-markdown` 류로 밀어 넣고 HWP native 구조라고 부르기.
 - HWP COM으로 한 번 열렸다는 사실만으로 package 구조 보존을 생략하기.
+- 별도 Hancom SDK가 필요한 비교/병합/보안 기능을 COM action 추정만으로 supported라고 표시하기.
