@@ -99,6 +99,14 @@ namespace OpenHwp.Automation.Cli
                 }
             }
 
+            if (candidateIndex < candidateTables.Count)
+            {
+                issues.Add(LayoutIssue.ReviewNeeded(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} extra table(s) after matched template tables",
+                    candidateTables.Count - candidateIndex)));
+            }
+
             var templateParagraphs = ExtractDirectParagraphs(template).ToList();
             var candidateParagraphs = ExtractDirectParagraphs(candidate).ToList();
             var paragraphStyleDrift = CountLeadingParagraphStyleDrift(templateParagraphs, candidateParagraphs, Math.Min(80, Math.Min(templateParagraphs.Count, candidateParagraphs.Count)));
@@ -176,21 +184,15 @@ namespace OpenHwp.Automation.Cli
 
         private static int FindAllowedColumnChangeTable(IList<TableSignature> candidateTables, TableSignature original, int startIndex, bool allowRowChange)
         {
-            var relaxedIndex = -1;
             for (var index = startIndex; index < candidateTables.Count; index++)
             {
-                if (IsCoreTableMatch(original, candidateTables[index]))
+                if (IsAllowedColumnChangeMatch(original, candidateTables[index], allowRowChange))
                 {
                     return index;
                 }
-
-                if (relaxedIndex < 0 && IsAllowedColumnChangeMatch(original, candidateTables[index], allowRowChange))
-                {
-                    relaxedIndex = index;
-                }
             }
 
-            return relaxedIndex;
+            return -1;
         }
 
         private static bool IsCoreTableMatch(TableSignature original, TableSignature current)
