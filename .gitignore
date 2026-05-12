@@ -8,9 +8,4 @@ artifacts/
 *.pdb
 *.log
 
-test/*
-!test/corpus/
-test/corpus/*
-!test/corpus/features/
-test/corpus/features/*
-!test/corpus/features/*.hwpx
+test/
