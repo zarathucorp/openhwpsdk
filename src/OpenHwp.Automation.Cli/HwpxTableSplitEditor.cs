@@ -41,13 +41,6 @@ namespace OpenHwp.Automation.Cli
                 Note = "table split was not applied"
             };
 
-            if (!string.Equals(result.Section, "section0", StringComparison.OrdinalIgnoreCase))
-            {
-                result.Note = "table split package operation currently supports section0 only";
-                WriteReport(result, options.ReportPath);
-                return result;
-            }
-
             var entries = SimpleZipArchive.ReadAll(result.InputPath);
             var textStyleGuard = HwpxTextStyleGuard.Create(entries);
             var sectionPart = "Contents/" + result.Section + ".xml";
@@ -111,7 +104,7 @@ namespace OpenHwp.Automation.Cli
             var textRows = ParseTableText(options.Text);
             UpdateTextMatrixStats(result, textRows, options.Text != null);
 
-            var nextObjectId = Math.Max(1, MaxNumericId(section.Root) + 1);
+            var nextObjectId = HwpxSectionPartResolver.NextBodyObjectId(entries);
             if (!ApplySplit(table, grid, target, result, textRows, textStyleGuard, ref nextObjectId, out var note))
             {
                 result.Note = note;
@@ -675,26 +668,6 @@ namespace OpenHwp.Automation.Cli
                     attribute.Value = NextObjectId(ref nextObjectId);
                 }
             }
-        }
-
-        private static long MaxNumericId(XElement scope)
-        {
-            if (scope == null)
-            {
-                return 0;
-            }
-
-            long max = 0;
-            foreach (var attribute in scope.DescendantsAndSelf().Attributes("id"))
-            {
-                long value;
-                if (long.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > max)
-                {
-                    max = value;
-                }
-            }
-
-            return max;
         }
 
         private static string NextObjectId(ref long nextObjectId)

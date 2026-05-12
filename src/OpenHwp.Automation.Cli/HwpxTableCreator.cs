@@ -109,7 +109,7 @@ namespace OpenHwp.Automation.Cli
                     .First();
             }
 
-            var nextObjectId = Math.Max(1, MaxNumericId(section) + 1);
+            var nextObjectId = HwpxSectionPartResolver.NextBodyObjectId(entries);
             var paragraph = CreateTableParagraph(
                 reference.Table,
                 options.Rows,
@@ -722,26 +722,6 @@ namespace OpenHwp.Automation.Cli
             var value = nextObjectId;
             nextObjectId++;
             return value.ToString(CultureInfo.InvariantCulture);
-        }
-
-        private static long MaxNumericId(XDocument document)
-        {
-            long max = 0;
-            if (document == null)
-            {
-                return max;
-            }
-
-            foreach (var attribute in document.Descendants().Attributes("id"))
-            {
-                long value;
-                if (long.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > max)
-                {
-                    max = value;
-                }
-            }
-
-            return max;
         }
 
         private static int GetInt(XElement element, string attributeName, int defaultValue)

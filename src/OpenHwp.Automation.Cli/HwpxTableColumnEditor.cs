@@ -53,13 +53,6 @@ namespace OpenHwp.Automation.Cli
                 Note = "table column operation was not applied"
             };
 
-            if (!string.Equals(result.Section, "section0", StringComparison.OrdinalIgnoreCase))
-            {
-                result.Note = "table column package operation currently supports section0 only";
-                WriteReport(result, options.ReportPath);
-                return result;
-            }
-
             var entries = SimpleZipArchive.ReadAll(result.InputPath);
             var textStyleGuard = HwpxTextStyleGuard.Create(entries);
             var sectionPart = "Contents/" + result.Section + ".xml";
@@ -98,7 +91,7 @@ namespace OpenHwp.Automation.Cli
             var textRows = ParseTableText(options.Text);
             UpdateTextMatrixStats(result, textRows);
 
-            var nextObjectId = Math.Max(1, MaxNumericId(section) + 1);
+            var nextObjectId = HwpxSectionPartResolver.NextBodyObjectId(entries);
             if (action == "add")
             {
                 if (!ApplyAddColumns(table, result, textRows, textStyleGuard, ref nextObjectId, out var note))
@@ -554,26 +547,6 @@ namespace OpenHwp.Automation.Cli
             }
 
             return row[columnIndex] ?? string.Empty;
-        }
-
-        private static long MaxNumericId(XDocument document)
-        {
-            long max = 0;
-            if (document == null)
-            {
-                return max;
-            }
-
-            foreach (var attribute in document.Descendants().Attributes("id"))
-            {
-                long value;
-                if (long.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > max)
-                {
-                    max = value;
-                }
-            }
-
-            return max;
         }
 
         private static string NextObjectId(ref long nextObjectId)

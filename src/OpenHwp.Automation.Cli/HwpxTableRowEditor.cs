@@ -96,7 +96,7 @@ namespace OpenHwp.Automation.Cli
             var textRows = ParseTableText(options.Text);
             UpdateTextMatrixStats(result, textRows);
 
-            var nextObjectId = Math.Max(1, MaxNumericId(section) + 1);
+            var nextObjectId = HwpxSectionPartResolver.NextBodyObjectId(entries);
             if (action == "add")
             {
                 if (!ApplyAddRows(table, result, textRows, textStyleGuard, ref nextObjectId, out var note))
@@ -566,26 +566,6 @@ namespace OpenHwp.Automation.Cli
             return document == null || document.Root == null
                 ? 0
                 : document.Root.Descendants(Hp + "tbl").Count(table => !table.Ancestors(Hp + "tbl").Any());
-        }
-
-        private static long MaxNumericId(XDocument document)
-        {
-            long max = 0;
-            if (document == null)
-            {
-                return max;
-            }
-
-            foreach (var attribute in document.Descendants().Attributes("id"))
-            {
-                long value;
-                if (long.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value > max)
-                {
-                    max = value;
-                }
-            }
-
-            return max;
         }
 
         private static string NextObjectId(ref long nextObjectId)

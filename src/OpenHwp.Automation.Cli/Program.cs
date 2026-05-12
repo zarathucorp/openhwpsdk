@@ -890,7 +890,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -1020,7 +1020,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  For add, --row means insert after that zero-based row; omit it to append after the last row. For delete, --row is the zero-based first row to delete.");
                 return 1;
             }
@@ -1141,7 +1141,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  For add, --column means insert after that zero-based column; omit it to append after the last column. For delete, --column is the zero-based first column to delete.");
                 return 1;
             }
@@ -1262,7 +1262,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-merge-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --row-span count --col-span count [--text text] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-merge-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --row-span count --col-span count [--text text] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  --row and --column identify the zero-based top-left cell of the rectangular merge region.");
                 return 1;
             }
@@ -1399,7 +1399,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  --row and --column identify the zero-based top-left address of the merged cell to split.");
                 return 1;
             }
@@ -1511,7 +1511,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-cell-style-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --border-fill-id id [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-cell-style-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --border-fill-id id [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  The rectangle applies to all cells whose cell span intersects the selected zero-based row/column range.");
                 return 1;
             }
@@ -1643,7 +1643,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  Horizontal alignment clones the referenced paraPr in header.xml and points affected cell paragraphs at the clone.");
                 return 1;
             }
@@ -1784,7 +1784,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-cell-diagonal-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --direction slash|backslash|both|none [--row-span count] [--col-span count] [--width value] [--color #RRGGBB] [--base-border-fill-id id] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-cell-diagonal-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --direction slash|backslash|both|none [--row-span count] [--col-span count] [--width value] [--color #RRGGBB] [--base-border-fill-id id] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  Clones the affected cells' current borderFill definitions, changes diagonal slash/backSlash settings, and retargets affected cells to the clone.");
                 return 1;
             }
@@ -1939,7 +1939,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-cell-background-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --color #RRGGBB|none [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-cell-background-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --color #RRGGBB|none [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  Clones the affected cells' current borderFill definitions, changes solid fill color or clears fillBrush, and retargets affected cells to the clone.");
                 return 1;
             }
@@ -2074,7 +2074,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section section0] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section sectionName] [--report reportMarkdownPath]");
                 Console.Error.WriteLine("  Equalizes column widths and/or row heights in a simple top-level table while preserving total table size.");
                 return 1;
             }
@@ -2843,7 +2843,7 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section section0] [--occurrence index] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
                 return 1;
             }
 
@@ -4477,24 +4477,24 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] append-markdown-lines <inputPath> <markdownPath> <outputPath> [maxLines]");
             Console.WriteLine("  markdown-submission-text <markdownPath> [outputPath]");
             Console.WriteLine("  markdown-table-list <markdownPath>");
-            Console.WriteLine("  table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
-            Console.WriteLine("  table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-create-package <inputHwpxPath> <outputHwpxPath> --rows count --cols count [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--after-anchor text] [--reference-table index] [--border-fill-id id] [--header-border-fill-id id] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-row-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--row index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    For add, --row inserts after that zero-based row; for delete, --row is the first zero-based row to delete.");
-            Console.WriteLine("  table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-column-package <inputHwpxPath> <outputHwpxPath> --table-index index --action add|delete [--column index] [--count count] [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    For add, --column inserts after that zero-based column; for delete, --column is the first zero-based column to delete.");
-            Console.WriteLine("  table-merge-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --row-span count --col-span count [--text text] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-merge-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --row-span count --col-span count [--text text] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    --row and --column are the zero-based top-left cell of the rectangular merge region.");
-            Console.WriteLine("  table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-split-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--text row1col1|row1col2;row2col1|row2col2] [--text-file path] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    --row and --column are the zero-based top-left address of the merged cell to split.");
-            Console.WriteLine("  table-cell-style-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --border-fill-id id [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-cell-style-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --border-fill-id id [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    Applies an existing header.xml borderFill id to cells intersecting the selected zero-based range.");
-            Console.WriteLine("  table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-cell-align-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index [--horizontal left|center|right|justify] [--vertical top|center|bottom] [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    Applies direct cell paragraph horizontal alignment and/or cell subList vertical alignment.");
-            Console.WriteLine("  table-cell-background-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --color #RRGGBB|none [--row-span count] [--col-span count] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-cell-background-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --color #RRGGBB|none [--row-span count] [--col-span count] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    Clones current cell borderFill definitions, changes solid fill color or clears fillBrush, and retargets affected cells.");
-            Console.WriteLine("  table-cell-diagonal-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --direction slash|backslash|both|none [--row-span count] [--col-span count] [--width value] [--color #RRGGBB] [--base-border-fill-id id] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-cell-diagonal-package <inputHwpxPath> <outputHwpxPath> --table-index index --row index --column index --direction slash|backslash|both|none [--row-span count] [--col-span count] [--width value] [--color #RRGGBB] [--base-border-fill-id id] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    Clones current cell borderFill definitions, changes diagonal slash/backSlash settings, and retargets affected cells.");
-            Console.WriteLine("  table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section section0] [--report reportMarkdownPath]");
+            Console.WriteLine("  table-cell-size-package <inputHwpxPath> <outputHwpxPath> --table-index index [--equalize-widths] [--equalize-heights] [--section sectionName] [--report reportMarkdownPath]");
             Console.WriteLine("    Equalizes column widths and/or row heights in a simple top-level table while preserving total table size.");
             Console.WriteLine("  [--visible] [--keep-open] table-cell-set <inputPath> <outputPath> <tableIndex> <rowMoveCount> <columnMoveCount> <text>");
             Console.WriteLine("  [--visible] [--keep-open] fill-markdown-table <inputPath> <markdownPath> <outputPath> <markdownTableIndex> <hwpTableIndex> [startRow] [startCol] [skipMarkdownRows] [maxRows] [maxCols]");
@@ -4506,7 +4506,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
-            Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section section0] [--occurrence index] [--report reportMarkdownPath]");
+            Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");

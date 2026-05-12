@@ -19,12 +19,23 @@ namespace OpenHwp.Automation.Cli
 
         public static bool Validate(string templatePath, string candidatePath, string reportPath, ValidationOptions options)
         {
-            var template = ReadSection(templatePath);
-            var candidate = ReadSection(candidatePath);
-            var templateTables = ExtractTables(template).ToList();
-            var candidateTables = ExtractTables(candidate).ToList();
+            var templateSections = ReadSections(templatePath);
+            var candidateSections = ReadSections(candidatePath);
+            var templateTables = ExtractTables(templateSections.Select(item => item.Document)).ToList();
+            var candidateTables = ExtractTables(candidateSections.Select(item => item.Document)).ToList();
             var issues = new List<LayoutIssue>();
             options = options ?? new ValidationOptions();
+
+            if (candidateSections.Count != templateSections.Count)
+            {
+                issues.Add(LayoutIssue.Blocking(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "body section count changed: template={0}, candidate={1}",
+                    templateSections.Count,
+                    candidateSections.Count)));
+            }
+
+            AddSectionBoundaryIssues(templateSections, candidateSections, issues);
 
             if (candidateTables.Count < templateTables.Count)
             {
@@ -107,8 +118,8 @@ namespace OpenHwp.Automation.Cli
                     candidateTables.Count - candidateIndex)));
             }
 
-            var templateParagraphs = ExtractDirectParagraphs(template).ToList();
-            var candidateParagraphs = ExtractDirectParagraphs(candidate).ToList();
+            var templateParagraphs = ExtractDirectParagraphs(templateSections.Select(item => item.Document)).ToList();
+            var candidateParagraphs = ExtractDirectParagraphs(candidateSections.Select(item => item.Document)).ToList();
             var paragraphStyleDrift = CountLeadingParagraphStyleDrift(templateParagraphs, candidateParagraphs, Math.Min(80, Math.Min(templateParagraphs.Count, candidateParagraphs.Count)));
             if (paragraphStyleDrift > options.MaxLeadingParagraphStyleDrift)
             {
@@ -129,6 +140,10 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine();
             report.AppendLine(string.Format("- template: {0}", Path.GetFullPath(templatePath)));
             report.AppendLine(string.Format("- candidate: {0}", Path.GetFullPath(candidatePath)));
+            report.AppendLine(string.Format("- template sections: {0}", templateSections.Count));
+            report.AppendLine(string.Format("- candidate sections: {0}", candidateSections.Count));
+            report.AppendLine(string.Format("- template section tables: {0}", FormatSectionTableCounts(templateSections)));
+            report.AppendLine(string.Format("- candidate section tables: {0}", FormatSectionTableCounts(candidateSections)));
             report.AppendLine(string.Format("- template tables: {0}", templateTables.Count));
             report.AppendLine(string.Format("- candidate tables: {0}", candidateTables.Count));
             report.AppendLine(string.Format("- changed core tables: {0}", changedCoreTables));
@@ -263,15 +278,74 @@ namespace OpenHwp.Automation.Cli
                    string.Equals(original.FirstLabels[0], current.FirstLabels[0], StringComparison.Ordinal);
         }
 
-        private static XDocument ReadSection(string hwpxPath)
+        private static void AddSectionBoundaryIssues(IList<LayoutSection> templateSections, IList<LayoutSection> candidateSections, IList<LayoutIssue> issues)
+        {
+            var count = Math.Min(templateSections.Count, candidateSections.Count);
+            for (var index = 0; index < count; index++)
+            {
+                var template = templateSections[index];
+                var candidate = candidateSections[index];
+                if (!string.Equals(template.Path, candidate.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    issues.Add(LayoutIssue.Blocking(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "body section order changed at index {0}: template={1}, candidate={2}",
+                        index,
+                        template.Path,
+                        candidate.Path)));
+                }
+
+                var templateTableCount = ExtractTables(template.Document).Count();
+                var candidateTableCount = ExtractTables(candidate.Document).Count();
+                if (templateTableCount != candidateTableCount)
+                {
+                    issues.Add(LayoutIssue.Blocking(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "body section {0} table count changed: template={1}, candidate={2}",
+                        template.Path,
+                        templateTableCount,
+                        candidateTableCount)));
+                }
+            }
+        }
+
+        private static string FormatSectionTableCounts(IEnumerable<LayoutSection> sections)
+        {
+            var parts = (sections ?? Enumerable.Empty<LayoutSection>())
+                .Select(section => string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}={1}",
+                    section.Path,
+                    ExtractTables(section.Document).Count()))
+                .ToArray();
+            return parts.Length == 0 ? "none" : string.Join(", ", parts);
+        }
+
+        private static IList<LayoutSection> ReadSections(string hwpxPath)
         {
             var entries = SimpleZipArchive.ReadAll(hwpxPath);
-            if (!entries.ContainsKey("Contents/section0.xml"))
+            var sectionPaths = HwpxSectionPartResolver.GetBodySectionPartPaths(entries);
+            if (sectionPaths.Count == 0)
             {
-                throw new InvalidOperationException("The HWPX file does not contain Contents/section0.xml: " + hwpxPath);
+                throw new InvalidOperationException("The HWPX file does not contain any Contents/section*.xml part: " + hwpxPath);
             }
 
-            return XDocument.Parse(Encoding.UTF8.GetString(entries["Contents/section0.xml"]), LoadOptions.PreserveWhitespace);
+            return sectionPaths
+                .Select(path => new LayoutSection(
+                    path,
+                    XDocument.Parse(Encoding.UTF8.GetString(entries[path]), LoadOptions.PreserveWhitespace)))
+                .ToList();
+        }
+
+        private static IEnumerable<TableSignature> ExtractTables(IEnumerable<XDocument> documents)
+        {
+            foreach (var document in documents ?? Enumerable.Empty<XDocument>())
+            {
+                foreach (var table in ExtractTables(document))
+                {
+                    yield return table;
+                }
+            }
         }
 
         private static IEnumerable<TableSignature> ExtractTables(XDocument document)
@@ -293,6 +367,17 @@ namespace OpenHwp.Automation.Cli
                         .Where(text => !string.IsNullOrWhiteSpace(text))
                         .ToList()
                 };
+            }
+        }
+
+        private static IEnumerable<ParagraphSignature> ExtractDirectParagraphs(IEnumerable<XDocument> documents)
+        {
+            foreach (var document in documents ?? Enumerable.Empty<XDocument>())
+            {
+                foreach (var paragraph in ExtractDirectParagraphs(document))
+                {
+                    yield return paragraph;
+                }
             }
         }
 
@@ -446,6 +531,19 @@ namespace OpenHwp.Automation.Cli
             public string ParaPrId { get; set; }
 
             public string CharPrId { get; set; }
+        }
+
+        private sealed class LayoutSection
+        {
+            public LayoutSection(string path, XDocument document)
+            {
+                Path = path;
+                Document = document;
+            }
+
+            public string Path { get; private set; }
+
+            public XDocument Document { get; private set; }
         }
     }
 }

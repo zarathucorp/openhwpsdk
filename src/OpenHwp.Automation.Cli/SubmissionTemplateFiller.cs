@@ -35,7 +35,7 @@ namespace OpenHwp.Automation.Cli
         private readonly IList<MarkdownImageReference> _imageReferences;
         private readonly string _templatePath;
         private readonly IDictionary<string, byte[]> _entries;
-        private readonly XDocument _section;
+        private readonly IList<BodySectionDocument> _sections;
         private readonly HwpxTextStyleGuard _textStyleGuard;
         private readonly int? _roadmapOverviewBodyCharPrIdRef;
         private readonly FillReport _report = new FillReport();
@@ -55,14 +55,13 @@ namespace OpenHwp.Automation.Cli
             _textStyleGuard = HwpxTextStyleGuard.Create(_entries);
             _roadmapOverviewBodyCharPrIdRef = _textStyleGuard.NormalizeRequestedCharPrId(LegacyRoadmapOverviewBodyCharPrId);
 
-            byte[] sectionBytes;
-            if (!_entries.TryGetValue("Contents/section0.xml", out sectionBytes))
+            _sections = ReadBodySections(_entries);
+            if (_sections.Count == 0)
             {
-                throw new InvalidOperationException("The HWPX template does not contain Contents/section0.xml.");
+                throw new InvalidOperationException("The HWPX template does not contain any Contents/section*.xml body section.");
             }
 
-            _section = XDocument.Parse(Encoding.UTF8.GetString(sectionBytes), LoadOptions.PreserveWhitespace);
-            _nextGeneratedObjectId = Math.Max(1, MaxNumericId(_section) + 1);
+            _nextGeneratedObjectId = Math.Max(1, _sections.Select(item => MaxNumericId(item.Document)).DefaultIfEmpty(0).Max() + 1);
             _report.TemplateCompatibility = AnalyzeTemplateCompatibility();
             _report.MarkdownTableMode = _markdownTableMode;
             foreach (var assetRoot in _assetRoots)
@@ -867,7 +866,7 @@ namespace OpenHwp.Automation.Cli
 
         private XElement GetTable(int tableIndex)
         {
-            var tables = _section.Descendants(Hp + "tbl").ToList();
+            var tables = BodyTables().ToList();
             return tableIndex >= 0 && tableIndex < tables.Count ? tables[tableIndex] : null;
         }
 
@@ -884,7 +883,29 @@ namespace OpenHwp.Automation.Cli
 
         private IEnumerable<XElement> RootParagraphs()
         {
-            return _section.Root == null ? Enumerable.Empty<XElement>() : _section.Root.Elements(Hp + "p");
+            foreach (var section in _sections)
+            {
+                if (section.Document.Root == null)
+                {
+                    continue;
+                }
+
+                foreach (var paragraph in section.Document.Root.Elements(Hp + "p"))
+                {
+                    yield return paragraph;
+                }
+            }
+        }
+
+        private IEnumerable<XElement> BodyTables()
+        {
+            foreach (var section in _sections)
+            {
+                foreach (var table in section.Document.Descendants(Hp + "tbl"))
+                {
+                    yield return table;
+                }
+            }
         }
 
         private static IEnumerable<XElement> GetDirectCellParagraphs(XElement cell)
@@ -1000,7 +1021,7 @@ namespace OpenHwp.Automation.Cli
 
         private TemplateCompatibilityReport AnalyzeTemplateCompatibility()
         {
-            var tables = _section.Descendants(Hp + "tbl").ToList();
+            var tables = BodyTables().ToList();
             var compatibility = new TemplateCompatibilityReport
             {
                 Status = tables.Count >= ExpectedProfileTableCount
@@ -1379,7 +1400,7 @@ namespace OpenHwp.Automation.Cli
 
         private XElement FindMarkdownTableReference(int columnCount)
         {
-            var tables = _section.Descendants(Hp + "tbl")
+            var tables = BodyTables()
                 .Where(table => !table.Ancestors(Hp + "tbl").Any())
                 .Where(table => !HasMergedCells(table) && table.Elements(Hp + "tr").Count() >= 2)
                 .ToList();
@@ -1839,13 +1860,26 @@ namespace OpenHwp.Automation.Cli
 
         private void Save(string outputPath)
         {
-            _entries["Contents/section0.xml"] = SerializeXmlDocument(_section);
+            foreach (var section in _sections)
+            {
+                _entries[section.Path] = SerializeXmlDocument(section.Document);
+            }
+
             if (_entries.ContainsKey("Preview/PrvText.txt"))
             {
                 _entries["Preview/PrvText.txt"] = new UTF8Encoding(false).GetBytes(string.Join(Environment.NewLine, NormalizeBlockLines(_markdown).ToArray()));
             }
 
             SimpleZipArchive.WriteAllPreservingTemplate(_templatePath, outputPath, _entries);
+        }
+
+        private static IList<BodySectionDocument> ReadBodySections(IDictionary<string, byte[]> entries)
+        {
+            return HwpxSectionPartResolver.GetBodySectionPartPaths(entries)
+                .Select(path => new BodySectionDocument(
+                    path,
+                    XDocument.Parse(Encoding.UTF8.GetString(entries[path]), LoadOptions.PreserveWhitespace)))
+                .ToList();
         }
 
         public static void WriteReport(FillReport fillReport, string templatePath, string markdownPath, string outputPath, string reportPath)
@@ -2220,6 +2254,19 @@ namespace OpenHwp.Automation.Cli
             {
                 return File.ReadAllText(path, Encoding.Default);
             }
+        }
+
+        private sealed class BodySectionDocument
+        {
+            public BodySectionDocument(string path, XDocument document)
+            {
+                Path = path;
+                Document = document;
+            }
+
+            public string Path { get; private set; }
+
+            public XDocument Document { get; private set; }
         }
 
         internal sealed class FillReport

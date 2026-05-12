@@ -48,13 +48,6 @@ namespace OpenHwp.Automation.Cli
                 Note = "table merge was not applied"
             };
 
-            if (!string.Equals(result.Section, "section0", StringComparison.OrdinalIgnoreCase))
-            {
-                result.Note = "table merge package operation currently supports section0 only";
-                WriteReport(result, options.ReportPath);
-                return result;
-            }
-
             var entries = SimpleZipArchive.ReadAll(result.InputPath);
             var textStyleGuard = HwpxTextStyleGuard.Create(entries);
             var sectionPart = "Contents/" + result.Section + ".xml";

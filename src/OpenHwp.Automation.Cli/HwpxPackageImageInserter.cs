@@ -33,26 +33,25 @@ namespace OpenHwp.Automation.Cli
             }
 
             var entries = SimpleZipArchive.ReadAll(hwpxPath);
-            var sectionKey = entries.ContainsKey("Contents/section0.xml") ? "Contents/section0.xml" : null;
+            var sections = ReadSectionDocuments(entries).ToList();
             var packageKey = entries.ContainsKey("Contents/content.hpf") ? "Contents/content.hpf" : (entries.ContainsKey("content.hpf") ? "content.hpf" : null);
-            if (sectionKey == null || packageKey == null)
+            if (sections.Count == 0 || packageKey == null)
             {
                 foreach (var write in writes)
                 {
                     write.Status = "failed";
-                    write.Note = "package fallback could not find section0.xml or content.hpf";
+                    write.Note = "package fallback could not find section*.xml or content.hpf";
                 }
 
                 return 0;
             }
 
-            var section = XDocument.Parse(Encoding.UTF8.GetString(entries[sectionKey]), LoadOptions.PreserveWhitespace);
             var package = XDocument.Parse(Encoding.UTF8.GetString(entries[packageKey]), LoadOptions.PreserveWhitespace);
             var nextImageIndex = NextImageIndex(entries, package);
-            var nextShapeId = NextShapeId(section);
-            var nextInstanceId = NextInstanceId(section);
-            var nextZOrder = NextZOrder(section);
-            var bodyArea = GetBodyArea(section);
+            var nextShapeId = NextShapeId(sections.Select(item => item.Document));
+            var nextInstanceId = NextInstanceId(sections.Select(item => item.Document));
+            var nextZOrder = NextZOrder(sections.Select(item => item.Document));
+            var touchedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var inserted = 0;
 
             foreach (var write in writes)
@@ -64,7 +63,7 @@ namespace OpenHwp.Automation.Cli
                     continue;
                 }
 
-                var textNode = section.Descendants(Hp + "t").FirstOrDefault(item => (item.Value ?? string.Empty).Contains(write.AnchorText));
+                var targetSection = FindSectionWithAnchor(sections, write.AnchorText, out var textNode);
                 if (textNode == null)
                 {
                     write.Status = "failed";
@@ -90,7 +89,7 @@ namespace OpenHwp.Automation.Cli
                 entries[imageEntryPath] = File.ReadAllBytes(write.ResolvedPath);
                 AddPackageManifestItem(package, imageId, imageEntryPath, MediaTypeForExtension(extension));
 
-                var displaySize = FitDisplaySize(imageSize, bodyArea);
+                var displaySize = FitDisplaySize(imageSize, GetBodyArea(targetSection.Document));
                 var picture = CreatePictureElement(
                     imageId,
                     write.ResolvedPath,
@@ -100,6 +99,7 @@ namespace OpenHwp.Automation.Cli
                     nextInstanceId++,
                     nextZOrder++);
                 InsertPictureAfterAnchor(textNode, write.AnchorText, picture, true);
+                touchedSections.Add(targetSection.Path);
                 nextImageIndex++;
                 inserted++;
                 write.Status = "applied";
@@ -112,12 +112,36 @@ namespace OpenHwp.Automation.Cli
 
             if (inserted > 0)
             {
-                entries[sectionKey] = SerializeXml(section);
+                foreach (var section in sections)
+                {
+                    if (touchedSections.Contains(section.Path))
+                    {
+                        entries[section.Path] = SerializeXml(section.Document);
+                    }
+                }
+
                 entries[packageKey] = SerializeXml(package);
                 SimpleZipArchive.WriteAllPreservingTemplate(hwpxPath, hwpxPath, entries);
             }
 
             return inserted;
+        }
+
+        private static SectionDocument FindSectionWithAnchor(IEnumerable<SectionDocument> sections, string anchorText, out XElement textNode)
+        {
+            foreach (var section in sections ?? Enumerable.Empty<SectionDocument>())
+            {
+                textNode = section.Document
+                    .Descendants(Hp + "t")
+                    .FirstOrDefault(item => (item.Value ?? string.Empty).Contains(anchorText));
+                if (textNode != null)
+                {
+                    return section;
+                }
+            }
+
+            textNode = null;
+            return null;
         }
 
         public static bool TryInsertImageAtParagraph(
@@ -295,9 +319,9 @@ namespace OpenHwp.Automation.Cli
                 imagePath,
                 imageSize,
                 displaySize,
-                NextShapeId(section),
-                NextInstanceId(section),
-                NextZOrder(section));
+                NextShapeId(xmlDocuments.Values),
+                NextInstanceId(xmlDocuments.Values),
+                NextZOrder(xmlDocuments.Values));
             return true;
         }
 
@@ -557,28 +581,54 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
-        private static long NextShapeId(XDocument section)
+        private static long NextShapeId(IEnumerable<XDocument> documents)
         {
-            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
+            return Pictures(documents)
                 .Select(item => GetLong(item, "id", 1000000000))
                 .DefaultIfEmpty(1000000000)
                 .Max() + 1;
         }
 
-        private static long NextInstanceId(XDocument section)
+        private static long NextInstanceId(IEnumerable<XDocument> documents)
         {
-            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
+            return Pictures(documents)
                 .Select(item => GetLong(item, "instid", 5000000))
                 .DefaultIfEmpty(5000000)
                 .Max() + 1;
         }
 
-        private static int NextZOrder(XDocument section)
+        private static int NextZOrder(IEnumerable<XDocument> documents)
         {
-            return (section == null ? Enumerable.Empty<XElement>() : section.Descendants(Hp + "pic"))
+            return Pictures(documents)
                 .Select(item => GetInt(item, "zOrder", 100))
                 .DefaultIfEmpty(100)
                 .Max() + 1;
+        }
+
+        private static IEnumerable<XElement> Pictures(IEnumerable<XDocument> documents)
+        {
+            foreach (var document in documents ?? Enumerable.Empty<XDocument>())
+            {
+                if (document == null)
+                {
+                    continue;
+                }
+
+                foreach (var picture in document.Descendants(Hp + "pic"))
+                {
+                    yield return picture;
+                }
+            }
+        }
+
+        private static IEnumerable<SectionDocument> ReadSectionDocuments(IDictionary<string, byte[]> entries)
+        {
+            foreach (var path in HwpxSectionPartResolver.GetBodySectionPartPaths(entries))
+            {
+                yield return new SectionDocument(
+                    path,
+                    XDocument.Parse(Encoding.UTF8.GetString(entries[path]), LoadOptions.PreserveWhitespace));
+            }
         }
 
         private static ImageSize ReadImageSize(string path)
@@ -791,6 +841,19 @@ namespace OpenHwp.Automation.Cli
             public int Width { get; private set; }
 
             public int Height { get; private set; }
+        }
+
+        private sealed class SectionDocument
+        {
+            public SectionDocument(string path, XDocument document)
+            {
+                Path = path;
+                Document = document;
+            }
+
+            public string Path { get; private set; }
+
+            public XDocument Document { get; private set; }
         }
     }
 }

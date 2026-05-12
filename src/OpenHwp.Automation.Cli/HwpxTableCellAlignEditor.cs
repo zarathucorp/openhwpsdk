@@ -79,13 +79,6 @@ namespace OpenHwp.Automation.Cli
                 return result;
             }
 
-            if (!string.Equals(result.Section, "section0", StringComparison.OrdinalIgnoreCase))
-            {
-                result.Note = "table cell alignment package operation currently supports section0 only";
-                WriteReport(result, options.ReportPath);
-                return result;
-            }
-
             var entries = SimpleZipArchive.ReadAll(result.InputPath);
             var sectionPart = "Contents/" + result.Section + ".xml";
             if (!entries.ContainsKey(sectionPart))

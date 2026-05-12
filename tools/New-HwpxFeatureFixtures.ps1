@@ -216,3 +216,21 @@ $simpleTableExtra = @{
     "Contents/header.xml" = New-Utf8Bytes (New-SimpleTableHeaderXml)
 }
 Write-HwpxFixture "simple-table.hwpx" (New-SectionXml (New-SimpleTableXml)) $simpleTableExtra
+
+$multiSection0 = New-SectionXml (New-ParagraphXml "<hp:t>Section zero marker</hp:t>")
+$multiSection1 = New-SectionXml ((New-ParagraphXml "<hp:t>Section one marker</hp:t>") + (New-SimpleTableXml))
+$multiSectionContentPackage = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?>" +
+    "<opf:package xmlns:opf=`"http://www.idpf.org/2007/opf/`" version=`"1.0`">" +
+    "<opf:manifest>" +
+    "<opf:item id=`"header`" href=`"Contents/header.xml`" media-type=`"application/xml`"/>" +
+    "<opf:item id=`"section0`" href=`"Contents/section0.xml`" media-type=`"application/xml`"/>" +
+    "<opf:item id=`"section1`" href=`"Contents/section1.xml`" media-type=`"application/xml`"/>" +
+    "</opf:manifest>" +
+    "<opf:spine><opf:itemref idref=`"header`"/><opf:itemref idref=`"section0`"/><opf:itemref idref=`"section1`"/></opf:spine>" +
+    "</opf:package>"
+$multiSectionExtra = @{
+    "Contents/content.hpf" = New-Utf8Bytes $multiSectionContentPackage
+    "Contents/header.xml" = New-Utf8Bytes ((New-SimpleTableHeaderXml).Replace('secCnt="1"', 'secCnt="2"'))
+    "Contents/section1.xml" = New-Utf8Bytes $multiSection1
+}
+Write-HwpxFixture "multi-section-table.hwpx" $multiSection0 $multiSectionExtra
