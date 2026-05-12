@@ -8,8 +8,8 @@
 
 ## 근거
 
-- 현재 repo 기능 근거: `scan-hwpx-features test test\out\hwpx_feature_scan.md`, `Program.cs` CLI 표면, `HwpxFormMap`, `HwpxTableModel`, `HwpxPackageImageInserter`, `HwpxLayoutValidator`.
-- 현재 test corpus 결과: HWPX 69개, package/XML parse error 0, 표 3,049개, 셀 70,558개, 병합셀 20,360개, 중첩표 184개, 그림 94개, 필드/양식 492개, header/footer 4개, note 4개, reference 128개, embedded object 5개.
+- 현재 repo 기능 근거: `Program.cs` CLI 표면, `HwpxFormMap`, `HwpxTableModel`, `HwpxPackageImageInserter`, `HwpxLayoutValidator`.
+- 로컬 검증 근거(공개 repo 미포함): 2026-05-11 feature corpus scan에서 HWPX 69개, package/XML parse error 0, 표 3,049개, 셀 70,558개, 병합셀 20,360개, 중첩표 184개, 그림 94개, 필드/양식 492개, header/footer 4개, note 4개, reference 128개, embedded object 5개를 확인했다.
 - 한컴 공식 SDK/도움말 기준:
   - [한글 SDK](https://www.hancom.com/product/sdk/hwpSdk): HWP/HWPX 문서 뷰잉, 생성, 열기/저장, HTML/PDF 등 포맷 변환, Text/Image/Table 데이터 삽입/편집, 문서 보안, 문서 비교/병합/이력 관리 기능을 SDK 범주로 제시.
   - [Hancom SDK 라인업](https://sdk.hancom.com/en): document editing, automation, comparison, Docs Compare SDK, OCR SDK 등을 별도 SDK 범주로 제시.
@@ -66,7 +66,7 @@
 
 개발 단위:
 
-1. `test/corpus/features/` 구조 추가
+1. 로컬 feature fixture corpus 구성
    - `header-footer.hwpx`
    - `footnote-endnote.hwpx`
    - `press-field-form.hwpx`
@@ -95,7 +95,7 @@
 
 구현 상태(2026-05-11):
 
-- `test/corpus/features/*.hwpx` 8개 fixture와 `tools/New-HwpxFeatureFixtures.ps1` 생성 스크립트를 추가했다.
+- feature fixture corpus와 생성 스크립트는 공개 repo에서 제외하고 로컬 검증 자산으로만 유지한다.
 - `scan-hwpx-features` report는 aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals를 출력한다.
 - 상세 inventory report는 header/footer, field/form, reference, note 신호를 파일/part/type/text 단위로 보여준다.
 - 이 단계는 corpus inventory이며, 해당 기능의 write/edit 지원을 의미하지 않는다. 실제 작성 기능은 각 phase의 별도 개발 단위에서 검증한다.
@@ -512,7 +512,7 @@
 
 ### 후보 A: PDF visual smoke harness
 
-- `test/corpus/features`의 대표 fixture를 PDF로 export하는 smoke command 정리.
+- 로컬 feature fixture corpus의 대표 fixture를 PDF로 export하는 smoke command 정리.
 - scan report와 PDF export 결과를 같은 report 묶음으로 남긴다.
 - HWP COM이 불안정하면 `diagnose-com`과 visible export를 우선 실행한다.
 

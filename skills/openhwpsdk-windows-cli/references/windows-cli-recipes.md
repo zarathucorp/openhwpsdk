@@ -117,18 +117,11 @@ Layout reports classify findings as `expected-change`, `review-needed`, or `bloc
 Scan a file or corpus to see which HWPX authoring features are present:
 
 ```powershell
-& $cli scan-hwpx-features 'test' 'test\out\hwpx_feature_scan.md'
-& $cli list-header-footer 'test\corpus\features\header-footer.hwpx' 'test\out\header_footer_inventory.md'
-& $cli set-header-footer-text 'test\corpus\features\header-footer.hwpx' 'test\out\header_footer_text_write.hwpx' --kind header --section section0 --anchor 'Header fixture' --text 'Updated Header Fixture' --report 'test\out\header_footer_text_write.md'
-& $cli --visible page-number-set '<template.hwpx>' 'test\out\page_numbered.hwpx' --draw-pos 5 --side-char '-' --report 'test\out\page_numbered.md'
-& $cli --visible list-fields '<template.hwpx>' 'test\out\field_inventory.md' --com
-```
-
-Regenerate and scan the tracked feature fixtures:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
-& $cli scan-hwpx-features 'test\corpus\features' 'test\out\hwpx_feature_scan_features.md'
+& $cli scan-hwpx-features 'C:\temp\hwpx-samples' 'C:\temp\hwpx_feature_scan.md'
+& $cli list-header-footer 'C:\temp\template.hwpx' 'C:\temp\header_footer_inventory.md'
+& $cli set-header-footer-text 'C:\temp\template.hwpx' 'C:\temp\header_footer_text_write.hwpx' --kind header --section section0 --anchor 'Header fixture' --text 'Updated Header Fixture' --report 'C:\temp\header_footer_text_write.md'
+& $cli --visible page-number-set '<template.hwpx>' 'C:\temp\page_numbered.hwpx' --draw-pos 5 --side-char '-' --report 'C:\temp\page_numbered.md'
+& $cli --visible list-fields '<template.hwpx>' 'C:\temp\field_inventory.md' --com
 ```
 
 The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Treat broad writing/editing support as separate work.

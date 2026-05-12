@@ -204,18 +204,11 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-conte
 Scan HWPX feature coverage:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test" "test\out\hwpx_feature_scan.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer "test\corpus\features\header-footer.hwpx" "test\out\header_footer_inventory.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text "test\corpus\features\header-footer.hwpx" "test\out\header_footer_text_write.hwpx" --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report "test\out\header_footer_text_write.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible page-number-set "<template.hwpx>" "test\out\page_numbered.hwpx" --draw-pos 5 --side-char "-" --report "test\out\page_numbered.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-fields "<template.hwpx>" "test\out\field_inventory.md" --com
-```
-
-Regenerate and scan the tracked authoring feature corpus:
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "test\corpus\features" "test\out\hwpx_feature_scan_features.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features "C:\temp\hwpx-samples" "C:\temp\hwpx_feature_scan.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer "C:\temp\template.hwpx" "C:\temp\header_footer_inventory.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text "C:\temp\template.hwpx" "C:\temp\header_footer_text_write.hwpx" --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report "C:\temp\header_footer_text_write.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible page-number-set "<template.hwpx>" "C:\temp\page_numbered.hwpx" --draw-pos 5 --side-char "-" --report "C:\temp\page_numbered.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-fields "<template.hwpx>" "C:\temp\field_inventory.md" --com
 ```
 
 The feature scan report separates corpus evidence from implementation support. It includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for:

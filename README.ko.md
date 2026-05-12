@@ -95,18 +95,11 @@ map은 병합/중첩 표를 인식합니다. 표 grid는 `cellAddr`와 `cellSpan
 HWPX package 파일 또는 디렉터리를 스캔해 실제 corpus에 어떤 authoring feature가 있는지 확인합니다.
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test test\out\hwpx_feature_scan.md
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer test\corpus\features\header-footer.hwpx test\out\header_footer_inventory.md
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text test\corpus\features\header-footer.hwpx test\out\header_footer_text_write.hwpx --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report test\out\header_footer_text_write.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features C:\temp\hwpx-samples C:\temp\hwpx-feature-scan.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer C:\temp\template.hwpx C:\temp\header-footer-inventory.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text C:\temp\template.hwpx C:\temp\header-footer-text-write.hwpx --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report C:\temp\header-footer-text-write.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible page-number-set C:\temp\template.hwpx C:\temp\page-numbered.hwpx --draw-pos 5 --side-char - --report C:\temp\page-number-report.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-fields C:\temp\template.hwpx C:\temp\field-inventory.md --com
-```
-
-tracked feature corpus를 재생성하고 스캔할 수 있습니다.
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\New-HwpxFeatureFixtures.ps1
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features test\corpus\features test\out\hwpx_feature_scan_features.md
 ```
 
 feature scan report는 aggregate count, authoring coverage, missing corpus signal, per-file total, header/footer, field/form, references, notes, embedded object inventory를 포함합니다. Feature scan count는 inventory signal이며, 곧바로 광범위한 write/edit 지원을 의미하지는 않습니다.
