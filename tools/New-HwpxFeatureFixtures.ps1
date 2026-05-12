@@ -47,6 +47,67 @@ function New-ParagraphXml {
     return "<hp:p id=`"0`"><hp:run>" + $InnerXml + "</hp:run></hp:p>"
 }
 
+function New-SimpleTableHeaderXml {
+    return "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?>" +
+        "<hh:head xmlns:hh=`"http://www.hancom.co.kr/hwpml/2011/head`" " +
+        "xmlns:hc=`"http://www.hancom.co.kr/hwpml/2011/core`" version=`"1.5`" secCnt=`"1`">" +
+        "<hh:charProperties itemCnt=`"1`"><hh:charPr id=`"0`" height=`"1000`"/></hh:charProperties>" +
+        "<hh:paraProperties itemCnt=`"1`"><hh:paraPr id=`"0`"><hh:align horizontal=`"LEFT`"/></hh:paraPr></hh:paraProperties>" +
+        "<hh:borderFills itemCnt=`"2`">" +
+        "<hh:borderFill id=`"1`" threeD=`"0`" shadow=`"0`" centerLine=`"NONE`" breakCellSeparateLine=`"0`">" +
+        "<hh:slash type=`"NONE`" Crooked=`"0`" isCounter=`"0`"/><hh:backSlash type=`"NONE`" Crooked=`"0`" isCounter=`"0`"/>" +
+        "<hh:leftBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/><hh:rightBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/>" +
+        "<hh:topBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/><hh:bottomBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/>" +
+        "<hh:diagonal type=`"NONE`" width=`"0.10 mm`" color=`"#000000`"/><hc:fillBrush><hc:winBrush faceColor=`"#FFFFFF`" hatchColor=`"#000000`" alpha=`"0`"/></hc:fillBrush>" +
+        "</hh:borderFill>" +
+        "<hh:borderFill id=`"2`" threeD=`"0`" shadow=`"0`" centerLine=`"NONE`" breakCellSeparateLine=`"0`">" +
+        "<hh:slash type=`"NONE`" Crooked=`"0`" isCounter=`"0`"/><hh:backSlash type=`"NONE`" Crooked=`"0`" isCounter=`"0`"/>" +
+        "<hh:leftBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/><hh:rightBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/>" +
+        "<hh:topBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/><hh:bottomBorder type=`"SOLID`" width=`"0.10 mm`" color=`"#000000`"/>" +
+        "<hh:diagonal type=`"NONE`" width=`"0.10 mm`" color=`"#000000`"/><hc:fillBrush><hc:winBrush faceColor=`"#E5F1FB`" hatchColor=`"#000000`" alpha=`"0`"/></hc:fillBrush>" +
+        "</hh:borderFill>" +
+        "</hh:borderFills></hh:head>"
+}
+
+function New-SimpleTableCellXml {
+    param(
+        [int]$Row,
+        [int]$Column,
+        [string]$Text,
+        [int]$BorderFillId = 1
+    )
+
+    $paragraphId = (10 + ($Row * 3) + $Column).ToString()
+    return "<hp:tc borderFillIDRef=`"$BorderFillId`">" +
+        "<hp:cellAddr rowAddr=`"$Row`" colAddr=`"$Column`"/><hp:cellSpan rowSpan=`"1`" colSpan=`"1`"/>" +
+        "<hp:cellSz width=`"10000`" height=`"3000`"/><hp:cellMargin left=`"200`" right=`"200`" top=`"100`" bottom=`"100`"/>" +
+        "<hp:subList vertAlign=`"TOP`"><hp:p id=`"$paragraphId`" paraPrIDRef=`"0`"><hp:run charPrIDRef=`"0`"><hp:t>$Text</hp:t></hp:run></hp:p></hp:subList>" +
+        "</hp:tc>"
+}
+
+function New-SimpleTableXml {
+    $rows = @()
+    $labels = @(
+        @("A1", "A2", "A3"),
+        @("B1", "B2", "B3")
+    )
+
+    for ($row = 0; $row -lt 2; $row++) {
+        $cells = @()
+        for ($column = 0; $column -lt 3; $column++) {
+            $borderFillId = if ($row -eq 0) { 2 } else { 1 }
+            $cells += New-SimpleTableCellXml $row $column $labels[$row][$column] $borderFillId
+        }
+        $rows += "<hp:tr>" + ($cells -join "") + "</hp:tr>"
+    }
+
+    return "<hp:p id=`"0`" paraPrIDRef=`"0`"><hp:run charPrIDRef=`"0`">" +
+        "<hp:tbl id=`"1`" rowCnt=`"2`" colCnt=`"3`" borderFillIDRef=`"1`">" +
+        "<hp:sz width=`"30000`" height=`"6000`"/>" +
+        ($rows -join "") +
+        "</hp:tbl></hp:run></hp:p>"
+}
+
 function New-BaseEntries {
     param([string]$SectionXml)
 
@@ -144,3 +205,8 @@ Write-HwpxFixture "chart-ole.hwpx" (New-SectionXml $objectBody) $objectExtra
 
 $tableBody = "<hp:p id=`"0`"><hp:run><hp:tbl><hp:tr><hp:tc><hp:cellSpan rowSpan=`"2`" colSpan=`"1`"/><hp:p><hp:run><hp:t>Outer cell</hp:t></hp:run></hp:p><hp:tbl><hp:tr><hp:tc><hp:p><hp:run><hp:t>Nested cell</hp:t></hp:run></hp:p></hp:tc></hp:tr></hp:tbl></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>"
 Write-HwpxFixture "table-authoring.hwpx" (New-SectionXml $tableBody)
+
+$simpleTableExtra = @{
+    "Contents/header.xml" = New-Utf8Bytes (New-SimpleTableHeaderXml)
+}
+Write-HwpxFixture "simple-table.hwpx" (New-SectionXml (New-SimpleTableXml)) $simpleTableExtra
