@@ -191,8 +191,44 @@ namespace OpenHwp.Automation.Cli
 
         private static bool IsAllowedColumnChangeMatch(TableSignature original, TableSignature current, bool allowRowChange)
         {
+            if (IsCoreTableMatch(original, current))
+            {
+                return true;
+            }
+
             return (allowRowChange || original.RowCount == current.RowCount) &&
-                   string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal);
+                   HasColumnOrWidthChange(original, current) &&
+                   string.Equals(current.BorderFillId, original.BorderFillId, StringComparison.Ordinal) &&
+                   HasStableLabelMatch(original, current);
+        }
+
+        private static bool HasColumnOrWidthChange(TableSignature original, TableSignature current)
+        {
+            return current.ColumnCount != original.ColumnCount ||
+                   Math.Abs(current.Width - original.Width) > 50;
+        }
+
+        private static bool HasStableLabelMatch(TableSignature original, TableSignature current)
+        {
+            if (original.FirstLabels.Count == 0)
+            {
+                return true;
+            }
+
+            if (current.FirstLabels.Count == 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(original.FirstLabels[0], current.FirstLabels[0], StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var currentLabels = new HashSet<string>(current.FirstLabels, StringComparer.Ordinal);
+            var overlap = original.FirstLabels.Count(label => currentLabels.Contains(label));
+            var requiredOverlap = Math.Min(2, original.FirstLabels.Count);
+            return overlap >= requiredOverlap;
         }
 
         private static bool IsSameTableIdentity(TableSignature original, TableSignature current)
