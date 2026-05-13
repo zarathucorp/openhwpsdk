@@ -3201,13 +3201,14 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
                 return 1;
             }
 
             string sourceSelectorText = null;
             var targetSelectorText = "doc-end";
             string reportPath = null;
+            var strictCleanup = false;
 
             for (var index = 3; index < args.Length; index++)
             {
@@ -3226,6 +3227,12 @@ namespace OpenHwp.Automation.Cli
                 if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
                 {
                     reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--strict-cleanup", StringComparison.OrdinalIgnoreCase))
+                {
+                    strictCleanup = true;
                     continue;
                 }
 
@@ -3258,7 +3265,8 @@ namespace OpenHwp.Automation.Cli
             string targetNote;
             bool sourceSelected;
             bool targetSelected;
-            var hwpProcessesBefore = ComOperationWatchdog.DescribeHwpProcesses();
+            var hwpProcessesBefore = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesBeforeText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesBefore);
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
@@ -3274,9 +3282,17 @@ namespace OpenHwp.Automation.Cli
                 targetSelected = TrySelectCopyLocation(hwp, target, true, out targetNote);
             }
 
-            var hwpProcessesAfter = ComOperationWatchdog.DescribeHwpProcesses();
-            Console.WriteLine("hwp_processes_before=" + hwpProcessesBefore);
-            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfter);
+            var hwpProcessesAfter = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesAfterText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesAfter);
+            var newHwpProcesses = ComOperationWatchdog.FindNewHwpProcesses(hwpProcessesBefore, hwpProcessesAfter);
+            var newHwpProcessesText = ComOperationWatchdog.DescribeHwpProcesses(newHwpProcesses);
+            var cleanupAvailable = ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesBefore) && ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesAfter);
+            var cleanupPassed = !strictCleanup || (cleanupAvailable && newHwpProcesses.Count == 0);
+            var cleanupStatus = FormatStrictCleanupStatus(strictCleanup, cleanupAvailable, cleanupPassed);
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBeforeText);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfterText);
+            Console.WriteLine("hwp_processes_new=" + newHwpProcessesText);
+            Console.WriteLine("strict_cleanup=" + cleanupStatus);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_note=" + sourceNote);
             Console.WriteLine("target_selected=" + BoolText(targetSelected));
@@ -3284,24 +3300,25 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, hwpProcessesBefore, hwpProcessesAfter, reportPath);
+                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, hwpProcessesBeforeText, hwpProcessesAfterText, newHwpProcessesText, cleanupStatus, cleanupPassed, reportPath);
                 Console.WriteLine(reportPath);
             }
 
-            return sourceSelected && targetSelected ? 0 : 2;
+            return sourceSelected && targetSelected && cleanupPassed ? 0 : 2;
         }
 
         private static int CopyFromDoc(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 4)
             {
-                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
                 return 1;
             }
 
             string sourceSelectorText = null;
             var targetSelectorText = "doc-end";
             string reportPath = null;
+            var strictCleanup = false;
 
             for (var index = 4; index < args.Length; index++)
             {
@@ -3320,6 +3337,12 @@ namespace OpenHwp.Automation.Cli
                 if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
                 {
                     reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--strict-cleanup", StringComparison.OrdinalIgnoreCase))
+                {
+                    strictCleanup = true;
                     continue;
                 }
 
@@ -3356,7 +3379,8 @@ namespace OpenHwp.Automation.Cli
             bool targetSelected;
             bool pasted;
             CopyFromDocVerification verification;
-            var hwpProcessesBefore = ComOperationWatchdog.DescribeHwpProcesses();
+            var hwpProcessesBefore = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesBeforeText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesBefore);
 
             using (var sourceHwp = CreateSession(visible, keepOpen))
             {
@@ -3384,11 +3408,19 @@ namespace OpenHwp.Automation.Cli
                 }
             }
 
-            var hwpProcessesAfter = ComOperationWatchdog.DescribeHwpProcesses();
+            var hwpProcessesAfter = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesAfterText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesAfter);
+            var newHwpProcesses = ComOperationWatchdog.FindNewHwpProcesses(hwpProcessesBefore, hwpProcessesAfter);
+            var newHwpProcessesText = ComOperationWatchdog.DescribeHwpProcesses(newHwpProcesses);
+            var cleanupAvailable = ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesBefore) && ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesAfter);
+            var cleanupPassed = !strictCleanup || (cleanupAvailable && newHwpProcesses.Count == 0);
+            var cleanupStatus = FormatStrictCleanupStatus(strictCleanup, cleanupAvailable, cleanupPassed);
             verification = VerifyCopyFromDocImageReplacement(args[1], args[2], args[3], source, target, pasted);
 
-            Console.WriteLine("hwp_processes_before=" + hwpProcessesBefore);
-            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfter);
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBeforeText);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfterText);
+            Console.WriteLine("hwp_processes_new=" + newHwpProcessesText);
+            Console.WriteLine("strict_cleanup=" + cleanupStatus);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_copied=" + BoolText(sourceCopied));
             Console.WriteLine("source_note=" + sourceNote);
@@ -3409,11 +3441,11 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, hwpProcessesBefore, hwpProcessesAfter, reportPath);
+                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, hwpProcessesBeforeText, hwpProcessesAfterText, newHwpProcessesText, cleanupStatus, cleanupPassed, reportPath);
                 Console.WriteLine(reportPath);
             }
 
-            return sourceSelected && sourceCopied && targetSelected && pasted && (!verification.Required || verification.Verified) ? 0 : 2;
+            return sourceSelected && sourceCopied && targetSelected && pasted && (!verification.Required || verification.Verified) && cleanupPassed ? 0 : 2;
         }
 
         private static int DemoList()
@@ -4426,8 +4458,17 @@ namespace OpenHwp.Automation.Cli
             string targetNote,
             string hwpProcessesBefore,
             string hwpProcessesAfter,
+            string newHwpProcesses,
+            string cleanupStatus,
+            bool cleanupPassed,
             string reportPath)
         {
+            var verdict = sourceSelected && targetSelected ? "ready" : "blocked";
+            if (sourceSelected && targetSelected && !cleanupPassed)
+            {
+                verdict = "failed-cleanup";
+            }
+
             var report = new StringBuilder();
             report.AppendLine("# Copy From Doc Probe");
             report.AppendLine();
@@ -4435,9 +4476,9 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- target: `" + targetPath + "`");
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
-            report.AppendLine("- verdict: " + (sourceSelected && targetSelected ? "ready" : "blocked"));
+            report.AppendLine("- verdict: " + verdict);
             report.AppendLine();
-            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter);
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter, newHwpProcesses, cleanupStatus);
             report.AppendLine();
             report.AppendLine("| side | selected | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4471,6 +4512,9 @@ namespace OpenHwp.Automation.Cli
             CopyFromDocVerification verification,
             string hwpProcessesBefore,
             string hwpProcessesAfter,
+            string newHwpProcesses,
+            string cleanupStatus,
+            bool cleanupPassed,
             string reportPath)
         {
             verification = verification ?? new CopyFromDocVerification { Verdict = "skipped", Note = "not evaluated" };
@@ -4479,6 +4523,10 @@ namespace OpenHwp.Automation.Cli
             if (comApplied && verification.Required && !verification.Verified)
             {
                 verdict = "failed-post-verify";
+            }
+            else if (comApplied && !cleanupPassed)
+            {
+                verdict = "failed-cleanup";
             }
 
             var report = new StringBuilder();
@@ -4491,7 +4539,7 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- target selector: `" + target.Raw + "`");
             report.AppendLine("- verdict: " + verdict);
             report.AppendLine();
-            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter);
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter, newHwpProcesses, cleanupStatus);
             report.AppendLine();
             report.AppendLine("| step | ok | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4528,7 +4576,7 @@ namespace OpenHwp.Automation.Cli
             WriteUtf8File(reportPath, report.ToString());
         }
 
-        private static void AppendComProcessDiagnostics(StringBuilder report, string before, string after)
+        private static void AppendComProcessDiagnostics(StringBuilder report, string before, string after, string newProcesses, string cleanupStatus)
         {
             report.AppendLine("## COM Process Diagnostics");
             report.AppendLine();
@@ -4536,6 +4584,24 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("| --- | --- |");
             report.AppendLine("| before | " + EscapeMarkdownTable(before) + " |");
             report.AppendLine("| after | " + EscapeMarkdownTable(after) + " |");
+            report.AppendLine("| new after | " + EscapeMarkdownTable(newProcesses) + " |");
+            report.AppendLine();
+            report.AppendLine("- strict cleanup: " + cleanupStatus);
+        }
+
+        private static string FormatStrictCleanupStatus(bool strictCleanup, bool cleanupAvailable, bool cleanupPassed)
+        {
+            if (!strictCleanup)
+            {
+                return "not_requested";
+            }
+
+            if (!cleanupAvailable)
+            {
+                return "unavailable";
+            }
+
+            return cleanupPassed ? "passed" : "failed";
         }
 
         private static void AppendCopyVerifyImageRow(StringBuilder report, string side, string binData, string pixels, string sha256)
@@ -4890,8 +4956,8 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
+            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");

@@ -83,7 +83,7 @@ For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe f
 
 For image/gso source copied onto a `control:gso:<index>` HWPX target, `copy-from-doc` post-verifies the saved output package with `list-pictures`-style evidence. Treat `source_selected/source_copied/target_selected/pasted` as COM step status and `post_verify=verified|failed|skipped` as the actual package-level replacement check.
 
-`probe-copy-from-doc` and `copy-from-doc` reports include HWP process snapshots before and after the COM work. Use those values to spot lingering titleless HWP processes before assuming the document package is bad.
+`probe-copy-from-doc` and `copy-from-doc` reports include HWP process snapshots before and after the COM work. Use those values to spot lingering titleless HWP processes before assuming the document package is bad. Add `--strict-cleanup` when a newly remaining HWP process should make the copy/probe command fail; this is diagnostic-only and does not terminate user-owned HWP windows.
 
 ## Feature Coverage
 
