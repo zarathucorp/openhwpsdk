@@ -96,6 +96,7 @@ Scan a file or directory of HWPX packages to see which authoring features are pr
 
 ```bat
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe scan-hwpx-features C:\temp\hwpx-samples C:\temp\hwpx-feature-scan.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-pictures C:\temp\template.hwpx C:\temp\picture-inventory.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-header-footer C:\temp\template.hwpx C:\temp\header-footer-inventory.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe set-header-footer-text C:\temp\template.hwpx C:\temp\header-footer-text-write.hwpx --kind header --section section0 --anchor "Header fixture" --text "Updated Header Fixture" --report C:\temp\header-footer-text-write.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible page-number-set C:\temp\template.hwpx C:\temp\page-numbered.hwpx --draw-pos 5 --side-char - --report C:\temp\page-number-report.md
@@ -103,6 +104,8 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list
 ```
 
 The feature scan report includes aggregate counts, authoring coverage, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, references, notes, and embedded objects. Feature scan counts are inventory signals; they do not imply broad write/edit support.
+
+Use `list-pictures` for a COM-free picture inventory before image replacement work. The report includes the XML part, package-order graphical-object index, shape id, image reference, resolved `BinData` path, image type, pixel size, byte size, SHA256, `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, and `treatAsChar`. The package-order index is an inspection aid; when HWP COM is available, `list-controls` remains the authoritative editor control inventory.
 
 ## Submission Template Profile
 
@@ -154,6 +157,7 @@ Package table commands reject unsafe tables such as merged/nested/sparse/irregul
 Use HWP COM-backed rich copy/paste when an existing reference document already has the table or control formatting you need:
 
 ```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe list-pictures C:\temp\reference.hwpx C:\temp\reference-pictures.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls C:\temp\reference.hwpx C:\temp\reference-controls.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc C:\temp\reference.hwpx C:\temp\target.hwpx --source image:0 --target doc-end --report C:\temp\copy-probe.md
 src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc C:\temp\reference.hwpx C:\temp\target.hwpx C:\temp\copied.hwpx --source image:0 --target doc-end --report C:\temp\copy-report.md

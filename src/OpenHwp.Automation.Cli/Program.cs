@@ -156,6 +156,8 @@ namespace OpenHwp.Automation.Cli
                     return ValidateContent(commandArgs);
                 case "scan-hwpx-features":
                     return ScanHwpxFeatures(commandArgs);
+                case "list-pictures":
+                    return ListPictures(commandArgs);
                 case "list-header-footer":
                     return ListHeaderFooter(commandArgs);
                 case "set-header-footer-text":
@@ -2799,6 +2801,35 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int ListPictures(string[] args)
+        {
+            if (args.Length < 2 || args.Length > 3)
+            {
+                Console.Error.WriteLine("Usage: list-pictures <hwpxFileOrDirectory> [reportMarkdownPath]");
+                return 1;
+            }
+
+            var summary = HwpxPictureInspector.Inspect(args[1]);
+            if (args.Length == 3)
+            {
+                HwpxPictureInspector.WriteMarkdown(summary, args[2]);
+            }
+
+            Console.WriteLine("input=" + summary.InputPath);
+            Console.WriteLine("files=" + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_errors=" + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("xml_parse_errors=" + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("pictures=" + summary.PictureCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("matched_bindata=" + summary.MatchedBinDataCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_bindata=" + summary.MissingBinDataCount.ToString(CultureInfo.InvariantCulture));
+            if (args.Length == 3)
+            {
+                Console.WriteLine(args[2]);
+            }
+
+            return summary.PackageErrors == 0 && summary.XmlParseErrors == 0 ? 0 : 2;
+        }
+
         private static int ListHeaderFooter(string[] args)
         {
             if (args.Length < 2 || args.Length > 3)
@@ -4505,6 +4536,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--allow-table-column-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  list-pictures <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");

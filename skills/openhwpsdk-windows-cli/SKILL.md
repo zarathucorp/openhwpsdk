@@ -73,6 +73,7 @@ Use row/column table writes carefully around merged or irregular tables. Prefer 
 For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe first:
 
 ```powershell
+& $cli list-pictures '<reference.hwpx>' 'test\out\reference_pictures.md'
 & $cli --visible list-controls '<reference.hwpx>' 'test\out\reference_controls.md'
 & $cli --visible probe-copy-from-doc '<reference.hwpx>' '<target.hwpx>' --source image:0 --target doc-end --report 'test\out\copy_probe.md'
 & $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source image:0 --target doc-end --report 'test\out\copy_from_doc.md'
@@ -86,13 +87,14 @@ Use `scan-hwpx-features` when the question is what HWPX authoring features are p
 
 ```powershell
 & $cli scan-hwpx-features 'C:\temp\hwpx-samples' 'C:\temp\hwpx_feature_scan.md'
+& $cli list-pictures 'C:\temp\template.hwpx' 'C:\temp\picture_inventory.md'
 & $cli list-header-footer 'C:\temp\template.hwpx' 'C:\temp\header_footer_inventory.md'
 & $cli set-header-footer-text 'C:\temp\template.hwpx' 'C:\temp\header_footer_text_write.hwpx' --kind header --section section0 --anchor 'Header fixture' --text 'Updated Header Fixture' --report 'C:\temp\header_footer_text_write.md'
 & $cli --visible page-number-set '<template.hwpx>' 'C:\temp\page_numbered.hwpx' --draw-pos 5 --side-char '-' --report 'C:\temp\page_numbered.md'
 & $cli --visible list-fields '<template.hwpx>' 'C:\temp\field_inventory.md' --com
 ```
 
-The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Counts are inventory signals only; they do not mean the feature can be broadly written or edited yet.
+The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-pictures` for a COM-free picture inventory with XML part, package-order graphical-object index, image reference, resolved `BinData`, pixel size, SHA256, and key placement/wrap properties such as `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, and `treatAsChar`. The package-order index is an inspection aid; `list-controls` is still the authoritative editor control inventory when HWP COM is available. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Counts are inventory signals only; they do not mean the feature can be broadly written or edited yet.
 
 ## Windows Rules
 
