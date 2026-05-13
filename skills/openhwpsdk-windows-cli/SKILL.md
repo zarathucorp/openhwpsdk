@@ -81,6 +81,8 @@ For rich copy/paste from an existing reference HWP/HWPX, use HWP COM and probe f
 
 `copy-from-doc` currently supports whole-document, paragraph-to-end text block, whole-table, image, and generic-control sources: `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` starts at the paragraph containing the text. Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing.
 
+For image/gso source copied onto a `control:gso:<index>` HWPX target, `copy-from-doc` post-verifies the saved output package with `list-pictures`-style evidence. Treat `source_selected/source_copied/target_selected/pasted` as COM step status and `post_verify=verified|failed|skipped` as the actual package-level replacement check.
+
 ## Feature Coverage
 
 Use `scan-hwpx-features` when the question is what HWPX authoring features are present in a file or corpus:

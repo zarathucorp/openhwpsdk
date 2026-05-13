@@ -178,6 +178,8 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy
 
 Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing, so be careful with merged or irregular tables.
 
+When an image/gso source is copied onto a `control:gso:<index>` HWPX target, `copy-from-doc` post-verifies the output package with `list-pictures`-style evidence. The report separates COM step success from actual replacement success by recording source/target before/after `BinData`, pixel size, SHA256, and target picture-count preservation.
+
 ## C# Example
 
 ```csharp

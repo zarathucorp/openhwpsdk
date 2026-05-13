@@ -178,6 +178,8 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy
 
 target은 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<ctrlId>:<index>`를 사용할 수 있습니다. Cell target은 robust absolute grid addressing이 아니라 첫 cell 기준 HWP movement-count selection을 사용하므로 merged/irregular table에서는 주의해야 합니다.
 
+image/gso source를 HWPX `control:gso:<index>` target에 복사한 경우 `copy-from-doc`는 output package를 `list-pictures` 방식의 증거로 post-verify합니다. Report는 COM 단계 성공과 실제 교체 성공을 분리하고, source/target before/after `BinData`, pixel size, SHA256, target picture count 보존 여부를 기록합니다.
+
 ## C# 사용 예시
 
 ```csharp

@@ -3344,6 +3344,7 @@ namespace OpenHwp.Automation.Cli
             bool sourceCopied;
             bool targetSelected;
             bool pasted;
+            CopyFromDocVerification verification;
 
             using (var sourceHwp = CreateSession(visible, keepOpen))
             {
@@ -3371,6 +3372,8 @@ namespace OpenHwp.Automation.Cli
                 }
             }
 
+            verification = VerifyCopyFromDocImageReplacement(args[1], args[2], args[3], source, target, pasted);
+
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_copied=" + BoolText(sourceCopied));
             Console.WriteLine("source_note=" + sourceNote);
@@ -3378,6 +3381,12 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("target_note=" + targetNote);
             Console.WriteLine("pasted=" + BoolText(pasted));
             Console.WriteLine("paste_note=" + pasteNote);
+            Console.WriteLine("post_verify=" + verification.Verdict);
+            if (!string.IsNullOrWhiteSpace(verification.Note))
+            {
+                Console.WriteLine("post_verify_note=" + verification.Note);
+            }
+
             if (pasted)
             {
                 Console.WriteLine(args[3]);
@@ -3385,11 +3394,11 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, reportPath);
+                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, reportPath);
                 Console.WriteLine(reportPath);
             }
 
-            return sourceSelected && sourceCopied && targetSelected && pasted ? 0 : 2;
+            return sourceSelected && sourceCopied && targetSelected && pasted && (!verification.Required || verification.Verified) ? 0 : 2;
         }
 
         private static int DemoList()
@@ -4259,6 +4268,138 @@ namespace OpenHwp.Automation.Cli
             return false;
         }
 
+        private static CopyFromDocVerification VerifyCopyFromDocImageReplacement(
+            string sourcePath,
+            string targetPath,
+            string outputPath,
+            CopyLocation source,
+            CopyLocation target,
+            bool pasted)
+        {
+            var result = new CopyFromDocVerification
+            {
+                Verdict = "skipped",
+                SourceSelector = source == null ? string.Empty : source.Raw,
+                TargetSelector = target == null ? string.Empty : target.Raw
+            };
+
+            if (!pasted)
+            {
+                result.Note = "paste was not applied";
+                return result;
+            }
+
+            if (!IsGsoImageSelector(source) || !IsGsoControlTarget(target))
+            {
+                result.Note = "post-verify currently applies only to image/control:gso source copied onto control:gso target";
+                return result;
+            }
+
+            result.Required = true;
+            if (!IsHwpxPath(sourcePath) || !IsHwpxPath(targetPath) || !IsHwpxPath(outputPath))
+            {
+                result.Verdict = "failed";
+                result.Note = "post-verify requires HWPX source, target, and output paths";
+                return result;
+            }
+
+            try
+            {
+                var sourceInventory = HwpxPictureInspector.Inspect(sourcePath);
+                var targetBeforeInventory = HwpxPictureInspector.Inspect(targetPath);
+                var outputInventory = HwpxPictureInspector.Inspect(outputPath);
+                var sourcePicture = FindPictureByGsoIndex(sourceInventory, source.Index);
+                var beforePicture = FindPictureByGsoIndex(targetBeforeInventory, target.Index);
+                var afterPicture = FindPictureByGsoIndex(outputInventory, target.Index);
+
+                result.SourcePictureCount = sourceInventory.PictureCount;
+                result.TargetPictureCountBefore = targetBeforeInventory.PictureCount;
+                result.TargetPictureCountAfter = outputInventory.PictureCount;
+                result.SourceBinData = sourcePicture == null ? string.Empty : sourcePicture.BinDataPath;
+                result.TargetBeforeBinData = beforePicture == null ? string.Empty : beforePicture.BinDataPath;
+                result.TargetAfterBinData = afterPicture == null ? string.Empty : afterPicture.BinDataPath;
+                result.SourceSha256 = sourcePicture == null ? string.Empty : sourcePicture.Sha256;
+                result.TargetBeforeSha256 = beforePicture == null ? string.Empty : beforePicture.Sha256;
+                result.TargetAfterSha256 = afterPicture == null ? string.Empty : afterPicture.Sha256;
+                result.SourcePixels = sourcePicture == null ? string.Empty : sourcePicture.PixelSize;
+                result.TargetBeforePixels = beforePicture == null ? string.Empty : beforePicture.PixelSize;
+                result.TargetAfterPixels = afterPicture == null ? string.Empty : afterPicture.PixelSize;
+
+                if (sourcePicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "source image/gso picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                if (beforePicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "target before picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                if (afterPicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "target after picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                result.HashMatched = !string.IsNullOrWhiteSpace(result.SourceSha256) &&
+                    string.Equals(result.SourceSha256, result.TargetAfterSha256, StringComparison.OrdinalIgnoreCase);
+                result.PictureCountPreserved = result.TargetPictureCountBefore == result.TargetPictureCountAfter;
+                result.TargetChanged = !string.Equals(result.TargetBeforeSha256, result.TargetAfterSha256, StringComparison.OrdinalIgnoreCase);
+                result.Verified = result.HashMatched && result.PictureCountPreserved;
+                result.Verdict = result.Verified ? "verified" : "failed";
+                if (!result.Verified)
+                {
+                    result.Note = "source image hash did not match target after hash or target picture count changed";
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.Verdict = "failed";
+                result.Note = "post-verify failed: " + ex.GetType().Name + ": " + ex.Message;
+                return result;
+            }
+        }
+
+        private static bool IsGsoImageSelector(CopyLocation source)
+        {
+            if (source == null)
+            {
+                return false;
+            }
+
+            return string.Equals(source.Kind, "image", StringComparison.OrdinalIgnoreCase) ||
+                   (string.Equals(source.Kind, "control", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(source.CtrlId, "gso", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsGsoControlTarget(CopyLocation target)
+        {
+            return target != null &&
+                   string.Equals(target.Kind, "control", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(target.CtrlId, "gso", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsHwpxPath(string path)
+        {
+            return string.Equals(Path.GetExtension(path), ".hwpx", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static PictureInventoryItem FindPictureByGsoIndex(PictureInventorySummary summary, int gsoIndex)
+        {
+            return summary == null
+                ? null
+                : summary.Files
+                    .SelectMany(file => file.Pictures)
+                    .FirstOrDefault(picture => picture.GsoTypeIndex == gsoIndex);
+        }
+
         private static void WriteCopyProbeReport(
             string sourcePath,
             string targetPath,
@@ -4308,8 +4449,17 @@ namespace OpenHwp.Automation.Cli
             string targetNote,
             bool pasted,
             string pasteNote,
+            CopyFromDocVerification verification,
             string reportPath)
         {
+            verification = verification ?? new CopyFromDocVerification { Verdict = "skipped", Note = "not evaluated" };
+            var comApplied = sourceSelected && sourceCopied && targetSelected && pasted;
+            var verdict = comApplied ? "applied" : "failed";
+            if (comApplied && verification.Required && !verification.Verified)
+            {
+                verdict = "failed-post-verify";
+            }
+
             var report = new StringBuilder();
             report.AppendLine("# Copy From Doc Report");
             report.AppendLine();
@@ -4318,7 +4468,7 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- output: `" + outputPath + "`");
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
-            report.AppendLine("- verdict: " + (sourceSelected && sourceCopied && targetSelected && pasted ? "applied" : "failed"));
+            report.AppendLine("- verdict: " + verdict);
             report.AppendLine();
             report.AppendLine("| step | ok | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4327,7 +4477,45 @@ namespace OpenHwp.Automation.Cli
             AppendCopyReportRow(report, "target select", targetSelected, targetNote);
             AppendCopyReportRow(report, "paste", pasted, pasteNote);
 
+            report.AppendLine();
+            report.AppendLine("## Post Verify");
+            report.AppendLine();
+            report.AppendLine("- verdict: " + verification.Verdict);
+            report.AppendLine("- required: " + BoolText(verification.Required));
+            report.AppendLine("- verified: " + BoolText(verification.Verified));
+            if (!string.IsNullOrWhiteSpace(verification.Note))
+            {
+                report.AppendLine("- note: " + verification.Note);
+            }
+
+            report.AppendLine("- source selector: `" + verification.SourceSelector + "`");
+            report.AppendLine("- target selector: `" + verification.TargetSelector + "`");
+            report.AppendLine("- source picture count: " + verification.SourcePictureCount.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- target picture count: " + verification.TargetPictureCountBefore.ToString(CultureInfo.InvariantCulture) + " -> " + verification.TargetPictureCountAfter.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- hash matched: " + BoolText(verification.HashMatched));
+            report.AppendLine("- target changed: " + BoolText(verification.TargetChanged));
+            report.AppendLine("- picture count preserved: " + BoolText(verification.PictureCountPreserved));
+            report.AppendLine();
+            report.AppendLine("| side | BinData | pixels | sha256 |");
+            report.AppendLine("| --- | --- | --- | --- |");
+            AppendCopyVerifyImageRow(report, "source", verification.SourceBinData, verification.SourcePixels, verification.SourceSha256);
+            AppendCopyVerifyImageRow(report, "target before", verification.TargetBeforeBinData, verification.TargetBeforePixels, verification.TargetBeforeSha256);
+            AppendCopyVerifyImageRow(report, "target after", verification.TargetAfterBinData, verification.TargetAfterPixels, verification.TargetAfterSha256);
+
             WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendCopyVerifyImageRow(StringBuilder report, string side, string binData, string pixels, string sha256)
+        {
+            report.Append("| ");
+            report.Append(EscapeMarkdownTable(side));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(binData));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(pixels));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(sha256));
+            report.AppendLine(" |");
         }
 
         private static void AppendCopyReportRow(StringBuilder report, string step, bool ok, string note)
@@ -4568,6 +4756,51 @@ namespace OpenHwp.Automation.Cli
             {
                 return int.TryParse((raw ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value >= 0;
             }
+        }
+
+        private sealed class CopyFromDocVerification
+        {
+            public string Verdict { get; set; }
+
+            public bool Required { get; set; }
+
+            public bool Verified { get; set; }
+
+            public string Note { get; set; }
+
+            public string SourceSelector { get; set; }
+
+            public string TargetSelector { get; set; }
+
+            public int SourcePictureCount { get; set; }
+
+            public int TargetPictureCountBefore { get; set; }
+
+            public int TargetPictureCountAfter { get; set; }
+
+            public string SourceBinData { get; set; }
+
+            public string TargetBeforeBinData { get; set; }
+
+            public string TargetAfterBinData { get; set; }
+
+            public string SourcePixels { get; set; }
+
+            public string TargetBeforePixels { get; set; }
+
+            public string TargetAfterPixels { get; set; }
+
+            public string SourceSha256 { get; set; }
+
+            public string TargetBeforeSha256 { get; set; }
+
+            public string TargetAfterSha256 { get; set; }
+
+            public bool HashMatched { get; set; }
+
+            public bool TargetChanged { get; set; }
+
+            public bool PictureCountPreserved { get; set; }
         }
 
         private static void PrintUsage()

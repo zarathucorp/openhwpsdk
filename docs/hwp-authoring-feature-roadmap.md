@@ -601,20 +601,21 @@
 
 1. 완료: Phase 3.5 일부: picture/control inventory.
 2. 완료: Phase 3.5 일부: package-level `replace-image-control`.
-3. 다음: Phase 3.5 일부: `copy-from-doc` post-verify와 `InsertPicture` 단위/usage 방어.
-4. 그 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
-5. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
-6. Phase 10 일부: PDF visual smoke harness.
-7. Phase 1: header/footer 신규 영역 생성, COM 기반 편집, rich object support, section page setup.
-8. Phase 2: field/누름틀 named fill.
-9. Phase 3: table authoring 미완료 항목과 formulas inventory.
-10. Phase 4: caption/cross-reference COM insert/refresh workflow.
-11. Phase 5: footnote/endnote preservation과 COM insert.
-12. Phase 6: shape inventory diff와 text box write.
-13. Phase 7: equation inventory와 COM insert.
-14. Phase 8: chart/OLE/media preservation.
-15. Phase 9: 일반 Markdown-to-HWP renderer.
-16. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
+3. 완료: Phase 3.5 일부: `copy-from-doc` image target post-verify.
+4. 다음: Phase 3.5 일부: `InsertPicture` 단위/usage 방어.
+5. 그 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
+6. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
+7. Phase 10 일부: PDF visual smoke harness.
+8. Phase 1: header/footer 신규 영역 생성, COM 기반 편집, rich object support, section page setup.
+9. Phase 2: field/누름틀 named fill.
+10. Phase 3: table authoring 미완료 항목과 formulas inventory.
+11. Phase 4: caption/cross-reference COM insert/refresh workflow.
+12. Phase 5: footnote/endnote preservation과 COM insert.
+13. Phase 6: shape inventory diff와 text box write.
+14. Phase 7: equation inventory와 COM insert.
+15. Phase 8: chart/OLE/media preservation.
+16. Phase 9: 일반 Markdown-to-HWP renderer.
+17. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
 
 ## 바로 다음 커밋 후보
 
@@ -640,9 +641,11 @@
 
 ### 후보 C: `copy-from-doc` image target post-verify
 
+상태: 완료. image/gso source를 HWPX `control:gso:<index>` target에 붙여넣은 경우 output package를 post-verify한다.
+
 - `copy-from-doc` report를 COM 호출 성공과 실제 package 변경 성공으로 분리한다.
-- image/control target의 before/after binary hash와 object 속성을 검증한다.
-- 검증 실패 시 `verdict: applied`를 내지 않는다.
+- source image hash와 output target image hash, target picture count 보존 여부를 검증한다.
+- 검증 실패 시 `post_verify=failed`를 출력하고 명령을 nonzero로 종료한다.
 
 이유: "붙여넣기 호출 성공"과 "원하는 그림이 바뀜"은 다르다.
 
