@@ -107,6 +107,17 @@ feature scan report는 aggregate count, authoring coverage, missing corpus signa
 
 이미지 교체 작업 전에는 `list-pictures`로 COM 없이 그림 inventory를 먼저 확인할 수 있습니다. 보고서는 XML part, package 순서의 graphical-object index, shape id, image reference, resolved `BinData` path, image type, pixel size, byte size, SHA256, `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, `treatAsChar`를 포함합니다. package 순서 index는 점검용 신호이며, HWP COM을 사용할 수 있을 때는 `list-controls`가 editor control inventory의 기준입니다.
 
+## Package 이미지 교체
+
+기존 HWPX 그림 object의 size, position, wrapping, margin, crop, z-order, anchor 동작은 유지하고 연결된 image binary만 바꿔야 할 때 `replace-image-control`을 사용합니다.
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe replace-image-control C:\temp\template.hwpx C:\temp\replaced.hwpx --target control:gso:0 --image C:\temp\new-image.png --report C:\temp\replace-image-report.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe replace-image-control C:\temp\template.hwpx C:\temp\replaced.hwpx --target image:image1 --image C:\temp\new-image.png --report C:\temp\replace-image-report.md
+```
+
+이 명령은 package-level로 동작하며 HWP COM을 호출하지 않습니다. Target은 `list-pictures`가 출력한 package 순서 index 기반 `control:gso:<index>`, `picture:<index>`, 또는 `image:<binaryItemIDRef>`를 사용할 수 있습니다. 선택된 image reference 또는 resolved `BinData` path가 여러 picture에서 공유되면 shared binary 변경으로 여러 object가 바뀔 수 있으므로 실패합니다. Report는 source/before/after SHA256과 pixel size, picture/table count, preserved object properties, 그리고 `--report`가 있을 때 sibling `validate-layout` report를 기록합니다. Layout 실패는 review signal로 남기며, replacement 성공 여부는 hash/count/property 보존 검증으로 판단합니다.
+
 ## 제출 템플릿 프로파일
 
 지원되는 startup R&D submission profile은 다음 명령으로 실행합니다.

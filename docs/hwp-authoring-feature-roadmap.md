@@ -74,6 +74,11 @@
    - `table-cell-style-package`, `table-cell-align-package`, `table-cell-background-package`, `table-cell-diagonal-package`, `table-cell-size-package`가 셀 스타일/정렬/배경/대각선/크기 조정 범위에서 검증됐다.
    - 병합/중첩/sparse/주소 불일치/객체 포함 표는 명시적으로 거부하는 방향으로 안전 범위를 좁혔다.
 
+7. 이미지 inventory/교체 일부
+   - `list-pictures`가 COM 없이 picture index, package gso index, `binaryItemIDRef`, `BinData`, SHA256, pixel size, 크기/배치/wrap 속성을 보고한다.
+   - package-level `replace-image-control`이 기존 `hp:pic` 속성을 유지한 채 단일 picture의 연결 image binary를 교체하고, source/before/after hash, picture/table count, 속성 보존, `validate-layout` 결과를 보고한다.
+   - COM/editor-backed replacement fallback과 `copy-from-doc` post-verify는 아직 남은 작업이다.
+
 ## 큰 공백
 
 현재 구현은 "제출서식형 HWPX의 본문/표/병합셀/중첩표/이미지 작성"에 강하다. 반대로 실제 한/글에서 자주 쓰지만 아직 약하거나 없는 축은 다음이다.
@@ -594,10 +599,10 @@
 
 ## 추천 개발 순서
 
-1. Phase 3.5 일부: picture/control inventory.
-2. Phase 3.5 일부: package-level `replace-image-control`.
-3. Phase 3.5 일부: `copy-from-doc` post-verify와 `InsertPicture` 단위/usage 방어.
-4. Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
+1. 완료: Phase 3.5 일부: picture/control inventory.
+2. 완료: Phase 3.5 일부: package-level `replace-image-control`.
+3. 다음: Phase 3.5 일부: `copy-from-doc` post-verify와 `InsertPicture` 단위/usage 방어.
+4. 그 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
 5. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
 6. Phase 10 일부: PDF visual smoke harness.
 7. Phase 1: header/footer 신규 영역 생성, COM 기반 편집, rich object support, section page setup.
@@ -615,6 +620,8 @@
 
 ### 후보 A: Picture/control inventory
 
+상태: 완료. `list-pictures` 명령으로 구현됐다.
+
 - `list-pictures` 또는 `inspect-pictures` 명령을 추가한다.
 - gso typeIndex와 package-level `hp:pic`/`BinData`/hash/size/position/wrap 속성을 한 report에 연결한다.
 - 실제 HWPX의 특정 그림이 어떤 binary와 속성을 갖는지 COM 없이 확인 가능하게 한다.
@@ -622,6 +629,8 @@
 이유: 이미지 교체는 target 식별과 before/after 증명이 먼저 안정화되어야 한다.
 
 ### 후보 B: Package-level `replace-image-control`
+
+상태: 완료. package-level `replace-image-control` 명령으로 구현됐다.
 
 - 기존 `hp:pic` 속성을 보존하면서 연결된 `BinData` image만 교체한다.
 - source/target before/after hash, pixel size, object property diff를 report에 남긴다.

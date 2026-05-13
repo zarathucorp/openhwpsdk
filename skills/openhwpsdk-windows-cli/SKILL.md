@@ -96,6 +96,14 @@ Use `scan-hwpx-features` when the question is what HWPX authoring features are p
 
 The report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-pictures` for a COM-free picture inventory with XML part, package-order graphical-object index, image reference, resolved `BinData`, pixel size, SHA256, and key placement/wrap properties such as `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, and `treatAsChar`. The package-order index is an inspection aid; `list-controls` is still the authoritative editor control inventory when HWP COM is available. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Counts are inventory signals only; they do not mean the feature can be broadly written or edited yet.
 
+For package-level image replacement that preserves an existing picture object's size, position, wrap, margin, crop, z-order, and anchor properties, use:
+
+```powershell
+& $cli replace-image-control '<template.hwpx>' 'test\out\image_replaced.hwpx' --target control:gso:0 --image '<new-image.png>' --report 'test\out\image_replace_report.md'
+```
+
+This path is COM-free. The `control:gso:<index>` target uses the package-order index from `list-pictures`; use `list-controls` only when editor control identity is required. `replace-image-control` also accepts `picture:<index>` and `image:<binaryItemIDRef>`, fails on shared image references or shared resolved `BinData` paths, writes source/before/after hash and pixel evidence, reports picture/table counts, property preservation, and writes a sibling `validate-layout` report when `--report` is provided. Treat a failed layout report as a review signal; replacement success is gated by hash, count, and property preservation checks.
+
 ## Windows Rules
 
 - Quote every path that may contain spaces, Korean text, brackets, or `&`.

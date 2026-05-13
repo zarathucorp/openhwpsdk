@@ -158,6 +158,8 @@ namespace OpenHwp.Automation.Cli
                     return ScanHwpxFeatures(commandArgs);
                 case "list-pictures":
                     return ListPictures(commandArgs);
+                case "replace-image-control":
+                    return ReplaceImageControl(commandArgs);
                 case "list-header-footer":
                     return ListHeaderFooter(commandArgs);
                 case "set-header-footer-text":
@@ -2830,6 +2832,86 @@ namespace OpenHwp.Automation.Cli
             return summary.PackageErrors == 0 && summary.XmlParseErrors == 0 ? 0 : 2;
         }
 
+        private static int ReplaceImageControl(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: replace-image-control <inputHwpxPath> <outputHwpxPath> --target control:gso:<index>|picture:<index>|image:<binaryItemIDRef> --image imagePath [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            var options = new ReplaceImageControlOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2]
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--target", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Target = RequireValue(args, ref index, "--target");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--image", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ImagePath = RequireValue(args, ref index, "--image");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unknown replace-image-control option: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(options.Target) || string.IsNullOrWhiteSpace(options.ImagePath))
+            {
+                Console.Error.WriteLine("replace-image-control requires --target and --image.");
+                return 1;
+            }
+
+            var result = HwpxImageControlReplacer.Replace(options);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                HwpxImageControlReplacer.WriteMarkdown(result, options.ReportPath);
+            }
+
+            Console.WriteLine(options.OutputPath);
+            Console.WriteLine("verdict=" + result.Verdict);
+            if (!string.IsNullOrWhiteSpace(result.FailureReason))
+            {
+                Console.WriteLine("failure=" + result.FailureReason);
+            }
+
+            Console.WriteLine("target=" + result.Target);
+            Console.WriteLine("target_part=" + result.TargetPart);
+            Console.WriteLine("target_picture_index=" + result.TargetPictureIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("target_package_gso_index=" + result.TargetPackageGsoIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("image_reference=" + result.ImageReference);
+            Console.WriteLine("source_sha256=" + result.SourceImage.Sha256);
+            Console.WriteLine("before_sha256=" + result.BeforeImage.Sha256);
+            Console.WriteLine("after_sha256=" + result.AfterImage.Sha256);
+            Console.WriteLine("picture_count_before=" + result.PictureCountBefore.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("picture_count_after=" + result.PictureCountAfter.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("table_count_before=" + result.TableCountBefore.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("table_count_after=" + result.TableCountAfter.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("properties_preserved=" + (result.PropertiesPreserved ? "true" : "false"));
+            Console.WriteLine("hash_verified=" + (result.HashVerified ? "true" : "false"));
+            Console.WriteLine("layout_passed=" + (result.LayoutPassed.HasValue ? (result.LayoutPassed.Value ? "true" : "false") : "skipped"));
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Success ? 0 : 2;
+        }
+
         private static int ListHeaderFooter(string[] args)
         {
             if (args.Length < 2 || args.Length > 3)
@@ -4537,6 +4619,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  list-pictures <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  replace-image-control <inputHwpxPath> <outputHwpxPath> --target control:gso:<index>|picture:<index>|image:<binaryItemIDRef> --image imagePath [--report reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");

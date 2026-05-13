@@ -107,6 +107,17 @@ The feature scan report includes aggregate counts, authoring coverage, missing c
 
 Use `list-pictures` for a COM-free picture inventory before image replacement work. The report includes the XML part, package-order graphical-object index, shape id, image reference, resolved `BinData` path, image type, pixel size, byte size, SHA256, `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, and `treatAsChar`. The package-order index is an inspection aid; when HWP COM is available, `list-controls` remains the authoritative editor control inventory.
 
+## Package Image Replacement
+
+Use `replace-image-control` when an existing HWPX picture object should keep its current size, position, wrapping, margins, crop, z-order, and anchor behavior while only its linked image binary changes:
+
+```bat
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe replace-image-control C:\temp\template.hwpx C:\temp\replaced.hwpx --target control:gso:0 --image C:\temp\new-image.png --report C:\temp\replace-image-report.md
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe replace-image-control C:\temp\template.hwpx C:\temp\replaced.hwpx --target image:image1 --image C:\temp\new-image.png --report C:\temp\replace-image-report.md
+```
+
+This command is package-level and does not call HWP COM. Targets can be `control:gso:<index>` using the package-order index shown by `list-pictures`, `picture:<index>`, or `image:<binaryItemIDRef>`. It fails if the selected image reference or resolved `BinData` path is shared by more than one picture, because changing shared binary data would affect multiple objects. The report records source/before/after SHA256 and pixel size, picture and table counts, preserved object properties, and a sibling `validate-layout` report when `--report` is supplied. A failed layout report is kept as a review signal; replacement success is gated by hash, count, and property preservation checks.
+
 ## Submission Template Profile
 
 For the supported startup R&D submission profile, use:
