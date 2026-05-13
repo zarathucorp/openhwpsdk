@@ -602,8 +602,8 @@
 1. 완료: Phase 3.5 일부: picture/control inventory.
 2. 완료: Phase 3.5 일부: package-level `replace-image-control`.
 3. 완료: Phase 3.5 일부: `copy-from-doc` image target post-verify.
-4. 다음: Phase 3.5 일부: `InsertPicture` 단위/usage 방어.
-5. 그 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
+4. 완료: Phase 3.5 일부: `InsertPicture` 단위/usage 방어.
+5. 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
 6. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
 7. Phase 10 일부: PDF visual smoke harness.
 8. Phase 1: header/footer 신규 영역 생성, COM 기반 편집, rich object support, section page setup.
@@ -651,8 +651,10 @@
 
 ### 후보 D: `InsertPicture` unit guard and docs
 
+상태: 완료. HWP COM `InsertPicture` width/height guard와 usage/docs 경고가 추가됐다.
+
 - CLI usage와 docs에 width/height 단위 주의사항을 추가한다.
-- 비정상적으로 큰 width/height 값은 경고 또는 거부한다.
+- `1000`을 넘는 width/height 값은 HWPX `hp:sz`를 잘못 넣은 것으로 보고 거부한다.
 - 기존 object 크기 보존은 `replace-image-control`로 유도한다.
 
 이유: HWPX 내부 `hp:sz` 값을 COM `InsertPicture` width/height로 착각하면 문서가 크게 깨진다.

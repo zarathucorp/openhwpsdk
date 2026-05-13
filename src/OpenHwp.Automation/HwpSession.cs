@@ -9,6 +9,7 @@ namespace OpenHwp.Automation
     public sealed class HwpSession : IDisposable
     {
         public const string HwpObjectProgId = "HWPFrame.HwpObject";
+        public const int MaximumInsertPictureComDimension = 1000;
         private const string FilePathCheckDllModule = "FilePathCheckDLL";
         private static readonly string[] KnownModulePaths =
         {
@@ -88,6 +89,19 @@ namespace OpenHwp.Automation
             catch (COMException)
             {
                 return Create(visibleWhenCreated);
+            }
+        }
+
+        public static void ValidateInsertPictureDimensions(int width, int height)
+        {
+            if (width > MaximumInsertPictureComDimension || height > MaximumInsertPictureComDimension)
+            {
+                throw new HwpAutomationException(
+                    "Refusing InsertPicture width/height values that look like HWPX hp:sz units: width=" +
+                    width +
+                    ", height=" +
+                    height +
+                    ". HWP COM InsertPicture sizing is not HWPX package sizing; use replace-image-control when preserving an existing HWPX picture object's size and position.");
             }
         }
 
@@ -482,6 +496,7 @@ namespace OpenHwp.Automation
                 throw new ArgumentException("Picture path is required.", nameof(path));
             }
 
+            ValidateInsertPictureDimensions(width, height);
             EnsureDocument();
 
             try
@@ -828,6 +843,7 @@ namespace OpenHwp.Automation
                 throw new ArgumentException("Picture path is required.", nameof(path));
             }
 
+            ValidateInsertPictureDimensions(width, height);
             return WithEditMode(
                 1,
                 () =>
@@ -871,6 +887,7 @@ namespace OpenHwp.Automation
                 throw new ArgumentOutOfRangeException(nameof(occurrenceIndex));
             }
 
+            ValidateInsertPictureDimensions(width, height);
             return WithEditMode(
                 1,
                 () =>

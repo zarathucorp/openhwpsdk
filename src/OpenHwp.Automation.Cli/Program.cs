@@ -715,6 +715,13 @@ namespace OpenHwp.Automation.Cli
                 parameters[args[i].Substring(0, separatorIndex)] = ParseValue(args[i].Substring(separatorIndex + 1));
             }
 
+            if (string.Equals(featureName, "insertpicture", StringComparison.OrdinalIgnoreCase))
+            {
+                HwpSession.ValidateInsertPictureDimensions(
+                    GetInt(parameters, new[] { "width" }, 200),
+                    GetInt(parameters, new[] { "height" }, 200));
+            }
+
             using (var hwp = CreateSession(visible, keepOpen))
             {
                 ConfigureSessionForAutomation(hwp);
@@ -4864,6 +4871,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
             Console.WriteLine("  demo-list");
             Console.WriteLine("  [--visible] [--keep-open] demo-feature <featureName> [key=value ...] [--open <path>] [--save <path>]");
+            Console.WriteLine("    insertPicture width/height are HWP COM sizing values; values above 1000 are rejected as likely HWPX hp:sz units.");
             Console.WriteLine("  [--visible] [--keep-open] run <command>");
             Console.WriteLine("  [--visible] [--keep-open] action <actionName> [key=value ...] [--open <path>] [--save <path>]");
         }

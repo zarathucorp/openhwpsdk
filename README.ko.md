@@ -130,6 +130,8 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submissio
 
 지원되는 Markdown image line은 기본적으로 profile-specific package image writer가 삽입합니다. 원본 image file을 embedding하고, `BinData`/`hp:pic`/manifest entry를 작성하며, image DPI와 96-DPI fallback으로 display size를 계산합니다. 자연 100% 크기가 document body area를 넘을 때만 축소합니다. HWP COM이 안정적이고 editor-backed image insertion이 필요할 때만 `--image-mode com`을 사용합니다.
 
+HWP COM `InsertPicture` 경로(`demo-feature insertPicture`, `apply-form-map` COM image write, `--image-mode com`)의 `width`/`height`는 HWP COM sizing 값이며 HWPX package의 `hp:sz` 단위가 아닙니다. `1000`을 넘는 값은 HWPX 단위를 잘못 넣은 것으로 보고 거부합니다. 기존 picture object의 size, position, wrap, margin, crop, anchor 동작을 보존해야 하면 delete 후 `InsertPicture`가 아니라 `replace-image-control`을 사용합니다.
+
 fill report는 template/profile compatibility, table handling mode, rendered/converted table count, rebuilt row change, style-guard repair, image write result, mapped/unmapped image count, missing-target cause, sibling layout report를 포함합니다. `validate-layout`은 issue를 `expected-change`, `review-needed`, `blocking`으로 분류하며, blocking layout finding이 있을 때만 nonzero exit code를 반환합니다.
 
 ## Package 표/셀 편집

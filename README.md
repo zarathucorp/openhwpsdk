@@ -130,6 +130,8 @@ The profile defaults to `--markdown-table-mode render` and `--image-mode package
 
 Supported Markdown image lines are inserted by the profile-specific package image writer by default. It embeds the original image file, writes `BinData`/`hp:pic`/manifest entries, computes display size from image DPI with a 96-DPI fallback, and scales down only when the natural 100% size exceeds the document body area. Use `--image-mode com` only when local HWP COM is healthy and editor-backed image insertion is required.
 
+For the HWP COM `InsertPicture` path (`demo-feature insertPicture`, `apply-form-map` COM image writes, and `--image-mode com`), `width`/`height` are HWP COM sizing values, not HWPX `hp:sz` package units. Values above `1000` are rejected as likely HWPX units. To preserve an existing picture object's size, position, wrap, margins, crop, and anchor behavior, use `replace-image-control` instead of delete-plus-`InsertPicture`.
+
 The fill report includes template/profile compatibility, table handling mode, rendered/converted table counts, rebuilt row changes, style-guard repairs, image write results, mapped/unmapped image counts, missing-target causes, and the sibling layout report. `validate-layout` classifies issues as `expected-change`, `review-needed`, or `blocking`; its exit code is nonzero only for blocking layout findings.
 
 ## Package Table and Cell Editing
