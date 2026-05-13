@@ -182,6 +182,8 @@ target은 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<
 
 image/gso source를 HWPX `control:gso:<index>` target에 복사한 경우 `copy-from-doc`는 output package를 `list-pictures` 방식의 증거로 post-verify합니다. Report는 COM 단계 성공과 실제 교체 성공을 분리하고, source/target before/after `BinData`, pixel size, SHA256, target picture count 보존 여부를 기록합니다.
 
+`probe-copy-from-doc`와 `copy-from-doc` report는 COM 작업 시작 전/종료 후 HWP process snapshot도 포함합니다. 제목 없는 HWP process가 남아 file lock이나 다음 COM command 지연을 만들 수 있는지 확인할 때 이 진단값을 사용합니다.
+
 ## C# 사용 예시
 
 ```csharp

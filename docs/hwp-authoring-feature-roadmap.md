@@ -661,6 +661,8 @@
 
 ### 후보 E: COM cleanup diagnostics
 
+상태: 일부 완료. `probe-copy-from-doc`와 `copy-from-doc` report에 COM 작업 전후 HWP process snapshot이 추가됐다.
+
 - COM-backed 명령 report에 시작/종료 HWP process summary를 남긴다.
 - 사용자 HWP 창을 강제 종료하지 않는 strict cleanup 진단 옵션을 검토한다.
 

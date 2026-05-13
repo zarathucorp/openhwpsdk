@@ -182,6 +182,8 @@ Targets can be `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `c
 
 When an image/gso source is copied onto a `control:gso:<index>` HWPX target, `copy-from-doc` post-verifies the output package with `list-pictures`-style evidence. The report separates COM step success from actual replacement success by recording source/target before/after `BinData`, pixel size, SHA256, and target picture-count preservation.
 
+`probe-copy-from-doc` and `copy-from-doc` reports also include HWP process snapshots before and after the COM work. Use those diagnostics to spot lingering titleless HWP processes that can keep files locked or slow down the next COM command.
+
 ## C# Example
 
 ```csharp

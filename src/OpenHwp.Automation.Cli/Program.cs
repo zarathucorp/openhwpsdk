@@ -3258,6 +3258,7 @@ namespace OpenHwp.Automation.Cli
             string targetNote;
             bool sourceSelected;
             bool targetSelected;
+            var hwpProcessesBefore = ComOperationWatchdog.DescribeHwpProcesses();
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
@@ -3273,6 +3274,9 @@ namespace OpenHwp.Automation.Cli
                 targetSelected = TrySelectCopyLocation(hwp, target, true, out targetNote);
             }
 
+            var hwpProcessesAfter = ComOperationWatchdog.DescribeHwpProcesses();
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBefore);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfter);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_note=" + sourceNote);
             Console.WriteLine("target_selected=" + BoolText(targetSelected));
@@ -3280,7 +3284,7 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, reportPath);
+                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, hwpProcessesBefore, hwpProcessesAfter, reportPath);
                 Console.WriteLine(reportPath);
             }
 
@@ -3352,6 +3356,7 @@ namespace OpenHwp.Automation.Cli
             bool targetSelected;
             bool pasted;
             CopyFromDocVerification verification;
+            var hwpProcessesBefore = ComOperationWatchdog.DescribeHwpProcesses();
 
             using (var sourceHwp = CreateSession(visible, keepOpen))
             {
@@ -3379,8 +3384,11 @@ namespace OpenHwp.Automation.Cli
                 }
             }
 
+            var hwpProcessesAfter = ComOperationWatchdog.DescribeHwpProcesses();
             verification = VerifyCopyFromDocImageReplacement(args[1], args[2], args[3], source, target, pasted);
 
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBefore);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfter);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_copied=" + BoolText(sourceCopied));
             Console.WriteLine("source_note=" + sourceNote);
@@ -3401,7 +3409,7 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, reportPath);
+                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, hwpProcessesBefore, hwpProcessesAfter, reportPath);
                 Console.WriteLine(reportPath);
             }
 
@@ -4416,6 +4424,8 @@ namespace OpenHwp.Automation.Cli
             string sourceNote,
             bool targetSelected,
             string targetNote,
+            string hwpProcessesBefore,
+            string hwpProcessesAfter,
             string reportPath)
         {
             var report = new StringBuilder();
@@ -4426,6 +4436,8 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
             report.AppendLine("- verdict: " + (sourceSelected && targetSelected ? "ready" : "blocked"));
+            report.AppendLine();
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter);
             report.AppendLine();
             report.AppendLine("| side | selected | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4457,6 +4469,8 @@ namespace OpenHwp.Automation.Cli
             bool pasted,
             string pasteNote,
             CopyFromDocVerification verification,
+            string hwpProcessesBefore,
+            string hwpProcessesAfter,
             string reportPath)
         {
             verification = verification ?? new CopyFromDocVerification { Verdict = "skipped", Note = "not evaluated" };
@@ -4476,6 +4490,8 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
             report.AppendLine("- verdict: " + verdict);
+            report.AppendLine();
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter);
             report.AppendLine();
             report.AppendLine("| step | ok | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4510,6 +4526,16 @@ namespace OpenHwp.Automation.Cli
             AppendCopyVerifyImageRow(report, "target after", verification.TargetAfterBinData, verification.TargetAfterPixels, verification.TargetAfterSha256);
 
             WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendComProcessDiagnostics(StringBuilder report, string before, string after)
+        {
+            report.AppendLine("## COM Process Diagnostics");
+            report.AppendLine();
+            report.AppendLine("| checkpoint | HWP processes |");
+            report.AppendLine("| --- | --- |");
+            report.AppendLine("| before | " + EscapeMarkdownTable(before) + " |");
+            report.AppendLine("| after | " + EscapeMarkdownTable(after) + " |");
         }
 
         private static void AppendCopyVerifyImageRow(StringBuilder report, string side, string binData, string pixels, string sha256)
