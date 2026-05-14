@@ -34,6 +34,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pages_enabled: ${{ steps.pages.outputs.enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,20 +53,35 @@ jobs:
       - name: Build documentation
         run: mkdocs build --clean --site-dir site
 
-      - name: Configure GitHub Pages
+      - name: Check GitHub Pages configuration
+        id: pages
         if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(curl --silent --output /tmp/pages.json --write-out "%{http_code}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pages")
+          if [ "${status}" = "200" ]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::GitHub Pages is not enabled for this repository yet. Enable Settings > Pages > Build and deployment > Source: GitHub Actions, then re-run this workflow to publish the site."
+          fi
+
+      - name: Configure GitHub Pages
+        if: github.event_name == 'push' && steps.pages.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload GitHub Pages artifact
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.pages.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && needs.build.outputs.pages_enabled == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:

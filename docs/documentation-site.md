@@ -33,7 +33,13 @@ The workflow is defined in:
 
 On pull requests, it builds the site to catch broken configuration and Markdown problems. On pushes to `main`, it uploads the generated `site/` directory as a GitHub Pages artifact and deploys it with the official Pages action.
 
-In the repository settings, configure Pages to use GitHub Actions as the source.
+In the repository settings, configure Pages to use GitHub Actions as the source:
+
+```text
+Settings > Pages > Build and deployment > Source: GitHub Actions
+```
+
+The workflow still builds documentation when Pages is not enabled, but it skips deployment and emits a notice. After enabling Pages, re-run the workflow or push another documentation change to publish the site.
 
 ## Documentation Structure
 
