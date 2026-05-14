@@ -24,6 +24,9 @@ theme:
 plugins:
   - search
 
+not_in_nav: |
+  docs.md
+
 markdown_extensions:
   - admonition
   - attr_list
