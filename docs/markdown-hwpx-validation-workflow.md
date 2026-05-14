@@ -1,14 +1,14 @@
-# Markdown Form Entry Validation Workflow
+﻿# Markdown Form Entry Validation Workflow
 
-## Test Files
+## Working Files
 
-Use files under `test/` for conversion and form-entry tests:
+Use your own working directory for conversion and form-entry tests. The examples below use `C:\temp\openhwpsdk-out` for generated maps, reports, and output documents.
 
-- Template HWPX: the submission template `.hwpx` file directly under `test/`.
-- Source Markdown: the submission draft `.md` file directly under `test/`.
-- Test outputs: `test/out/`.
+- Template HWPX: the official or customer-provided `.hwpx` file you want to preserve.
+- Source Markdown: the `.md` file containing replacement text, tables, and supported image lines.
+- Output directory: a scratch directory outside the repository, for example `C:\temp\openhwpsdk-out`.
 
-The real test filenames contain Korean text, spaces, brackets, and `&`. Always quote those paths in CLI examples. In PowerShell discovery commands, prefer `-LiteralPath`.
+Real HWP/HWPX filenames often contain Korean text, spaces, brackets, and `&`. Always quote those paths in CLI examples. In PowerShell discovery commands, prefer `-LiteralPath`.
 
 ## Direction
 
@@ -36,7 +36,7 @@ For existing forms, use these commands as appropriate:
 When a template HWPX exists, inspect the actual package XML first and create a write map:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe extract-form-map "<template.hwpx>" "test\out\template_form_map.xml"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe extract-form-map "<template.hwpx>" "C:\temp\openhwpsdk-out\template_form_map.xml"
 ```
 
 The generated XML is intentionally smaller than the source HWPX package, but it maps the whole document package before exposing write targets:
@@ -53,7 +53,7 @@ The generated XML is intentionally smaller than the source HWPX package, but it 
 Before HWP-backed writes, probe every mapped position without changing the document:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-form-map "<template.hwpx>" "test\out\template_form_map.xml" "test\out\template_form_map_probe_all.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-form-map "<template.hwpx>" "C:\temp\openhwpsdk-out\template_form_map.xml" "C:\temp\openhwpsdk-out\template_form_map_probe_all.md"
 ```
 
 The probe checks every table cell by selecting it and every paragraph anchor by finding it in HWP. If a long anchor cannot be found exactly, it tries a shorter heading prefix and records that as `fallback search` in the report.
@@ -61,7 +61,7 @@ The probe checks every table cell by selecting it and every paragraph anchor by 
 Apply the filled map through HWP automation when editor-backed behavior is required:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_applied.hwpx"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible apply-form-map "<template.hwpx>" "C:\temp\openhwpsdk-out\template_form_map_filled.xml" "C:\temp\openhwpsdk-out\template_form_map_applied.hwpx"
 ```
 
 Add `--report "<report.md>"` to write attempted/applied/failed/skipped details for HWP COM writes, including `writeImage` operations.
@@ -69,13 +69,13 @@ Add `--report "<report.md>"` to write attempted/applied/failed/skipped details f
 For COM-free map writes, use package mode. This preserves the original HWPX package entries, applies XML text changes, can embed `writeImage` paths as package-level `BinData`/`hp:pic` objects, and runs layout validation after writing. The layout report is written as `*.layout.md` next to the apply report.
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package "<template.hwpx>" "test\out\template_form_map_filled.xml" "test\out\template_form_map_package_applied.hwpx" --report "test\out\template_form_map_package_apply.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe apply-form-map --package "<template.hwpx>" "C:\temp\openhwpsdk-out\template_form_map_filled.xml" "C:\temp\openhwpsdk-out\template_form_map_package_applied.hwpx" --report "C:\temp\openhwpsdk-out\template_form_map_package_apply.md"
 ```
 
 For the current submission form, use the dedicated profile command instead of hand-editing every map entry:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "test\out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --image-mode package --report "test\out\submission_filled_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe fill-submission-template "<template.hwpx>" "<source.md>" "C:\temp\openhwpsdk-out\submission_filled.hwpx" --profile r-and-d-startup-2026 --asset-root "<image-root>" --image-mode package --report "C:\temp\openhwpsdk-out\submission_filled_report.md"
 ```
 
 The submission profile queues supported Markdown image lines as text anchors, then inserts images with package-level `BinData`/`hp:pic` updates by default. Package image fallback embeds the original image file but computes the displayed object size from the image DPI, falling back to 96 DPI, and scales down only when the natural 100% size would exceed the document body area. This follows the HWP picture insertion behavior of preserving 100% size by default while avoiding body-width overflow. Use `--image-mode com` only when the local HWP COM session is known to be healthy and editor-backed insertion is required. Body Markdown tables default to rendered HWPX table objects using the simplest unmerged top-level table style available in the template; use `--markdown-table-mode text` only when preserving the original table count matters more than table semantics. The report lists template/profile compatibility, configured asset roots, rebuilt table row changes, style-guard repairs, resolved image paths, candidate paths for missing image files, pending image anchors, and unmapped image references.
@@ -87,7 +87,7 @@ Package text writes guard against inheriting tiny placeholder character styles. 
 Layout reports classify findings as `expected-change`, `review-needed`, or `blocking`. Any table row-count change is listed, and overlapping `cellSpan` coverage is blocking because it indicates a visually corrupted merged-cell grid. Intentional row expansion can be allowlisted by table index:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "test\out\submission_filled.hwpx" "test\out\submission_filled_layout.md" --allow-table-row-change 10
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "C:\temp\openhwpsdk-out\submission_filled.hwpx" "C:\temp\openhwpsdk-out\submission_filled_layout.md" --allow-table-row-change 10
 ```
 
 Package-mode anchor writes are applied from later paragraphs toward earlier paragraphs to reduce repeated-anchor drift when identical bullet text appears many times.
@@ -155,17 +155,17 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe markdown-table
 Fill an existing HWPX table without recreating it:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-create-package "<template.hwpx>" "test\out\new_table.hwpx" --rows 2 --cols 3 --text "Header A|Header B|Header C;Value 1|Value 2|Value 3" --report "test\out\new_table_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-row-package "<template.hwpx>" "test\out\row_added.hwpx" --table-index 4 --action add --row 1 --count 2 --text "R1C1|R1C2|R1C3|R1C4;R2C1|R2C2|R2C3|R2C4" --report "test\out\row_added_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-column-package "<template.hwpx>" "test\out\column_added.hwpx" --table-index 4 --action add --column 1 --count 1 --text "HNEW;R1NEW;R2NEW" --report "test\out\column_added_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-merge-package "<template.hwpx>" "test\out\table_merged.hwpx" --table-index 4 --row 1 --column 1 --row-span 2 --col-span 2 --text "Merged cell" --report "test\out\table_merged_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-split-package "test\out\table_merged.hwpx" "test\out\table_split.hwpx" --table-index 4 --row 1 --column 1 --text "A|B;C|D" --report "test\out\table_split_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-style-package "<template.hwpx>" "test\out\styled_cell.hwpx" --table-index 4 --row 1 --column 1 --border-fill-id 32 --report "test\out\styled_cell_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-align-package "<template.hwpx>" "test\out\aligned_cell.hwpx" --table-index 4 --row 1 --column 1 --horizontal right --vertical bottom --report "test\out\aligned_cell_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-background-package "<template.hwpx>" "test\out\background_cell.hwpx" --table-index 4 --row 1 --column 1 --color "#FFF2CC" --report "test\out\background_cell_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-diagonal-package "<template.hwpx>" "test\out\diagonal_cell.hwpx" --table-index 4 --row 1 --column 1 --direction both --width "0.15 mm" --color "#000000" --report "test\out\diagonal_cell_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-size-package "<template.hwpx>" "test\out\equalized_table.hwpx" --table-index 11 --equalize-widths --equalize-heights --report "test\out\equalized_table_report.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "test\out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-create-package "<template.hwpx>" "C:\temp\openhwpsdk-out\new_table.hwpx" --rows 2 --cols 3 --text "Header A|Header B|Header C;Value 1|Value 2|Value 3" --report "C:\temp\openhwpsdk-out\new_table_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-row-package "<template.hwpx>" "C:\temp\openhwpsdk-out\row_added.hwpx" --table-index 4 --action add --row 1 --count 2 --text "R1C1|R1C2|R1C3|R1C4;R2C1|R2C2|R2C3|R2C4" --report "C:\temp\openhwpsdk-out\row_added_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-column-package "<template.hwpx>" "C:\temp\openhwpsdk-out\column_added.hwpx" --table-index 4 --action add --column 1 --count 1 --text "HNEW;R1NEW;R2NEW" --report "C:\temp\openhwpsdk-out\column_added_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-merge-package "<template.hwpx>" "C:\temp\openhwpsdk-out\table_merged.hwpx" --table-index 4 --row 1 --column 1 --row-span 2 --col-span 2 --text "Merged cell" --report "C:\temp\openhwpsdk-out\table_merged_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-split-package "C:\temp\openhwpsdk-out\table_merged.hwpx" "C:\temp\openhwpsdk-out\table_split.hwpx" --table-index 4 --row 1 --column 1 --text "A|B;C|D" --report "C:\temp\openhwpsdk-out\table_split_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-style-package "<template.hwpx>" "C:\temp\openhwpsdk-out\styled_cell.hwpx" --table-index 4 --row 1 --column 1 --border-fill-id 32 --report "C:\temp\openhwpsdk-out\styled_cell_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-align-package "<template.hwpx>" "C:\temp\openhwpsdk-out\aligned_cell.hwpx" --table-index 4 --row 1 --column 1 --horizontal right --vertical bottom --report "C:\temp\openhwpsdk-out\aligned_cell_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-background-package "<template.hwpx>" "C:\temp\openhwpsdk-out\background_cell.hwpx" --table-index 4 --row 1 --column 1 --color "#FFF2CC" --report "C:\temp\openhwpsdk-out\background_cell_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-diagonal-package "<template.hwpx>" "C:\temp\openhwpsdk-out\diagonal_cell.hwpx" --table-index 4 --row 1 --column 1 --direction both --width "0.15 mm" --color "#000000" --report "C:\temp\openhwpsdk-out\diagonal_cell_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe table-cell-size-package "<template.hwpx>" "C:\temp\openhwpsdk-out\equalized_table.hwpx" --table-index 11 --equalize-widths --equalize-heights --report "C:\temp\openhwpsdk-out\equalized_table_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill-markdown-table "<template.hwpx>" "<source.md>" "C:\temp\openhwpsdk-out\cell_fill_education_2rows.hwpx" 8 3 1 0 1 2 5
 ```
 
 `table-create-package` is the COM-free path for creating a new simple table. It needs an existing unmerged top-level table in the source HWPX so it can clone stable table, cell, paragraph, and border defaults; it fails instead of guessing when no safe reference table exists. `--after-anchor` only targets top-level body paragraphs, and text input reports ignored or missing cells when the source matrix does not match `--rows` x `--cols`. Validate with content requirements for inserted text and `validate-layout` to confirm the expected table count increase does not disturb existing tables.
@@ -182,9 +182,9 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible fill
 Copy a whole table or control from a reference HWP/HWPX document through HWP's editor-backed clipboard path:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls "<reference.hwpx>" "test\out\reference_controls.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc "<reference.hwpx>" "<target.hwpx>" --source image:0 --target doc-end --report "test\out\copy_probe.md"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "test\out\copy_from_doc.hwpx" --source image:0 --target doc-end --report "test\out\copy_from_doc.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible list-controls "<reference.hwpx>" "C:\temp\openhwpsdk-out\reference_controls.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible probe-copy-from-doc "<reference.hwpx>" "<target.hwpx>" --source image:0 --target doc-end --report "C:\temp\openhwpsdk-out\copy_probe.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible copy-from-doc "<reference.hwpx>" "<target.hwpx>" "C:\temp\openhwpsdk-out\copy_from_doc.hwpx" --source image:0 --target doc-end --report "C:\temp\openhwpsdk-out\copy_from_doc.md"
 ```
 
 Use `probe-copy-from-doc` before mutation. Source selectors support `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` selects from the paragraph containing the text through the document end. Target selectors can use `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, or `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. After a copy, run `scan-hwpx-features`, `validate-layout`, and PDF export when visual placement matters.
@@ -192,13 +192,13 @@ Use `probe-copy-from-doc` before mutation. Source selectors support `all`, `para
 Run structural layout validation:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "test\out\cell_fill_education_2rows.hwpx" "test\out\cell_fill_education_2rows_layout_report.md"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-layout "<template.hwpx>" "C:\temp\openhwpsdk-out\cell_fill_education_2rows.hwpx" "C:\temp\openhwpsdk-out\cell_fill_education_2rows_layout_report.md"
 ```
 
 Run content validation:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-content "test\out\submission_filled.hwpx" "test\out\submission_filled_content_report.md" --require "required text"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe validate-content "C:\temp\openhwpsdk-out\submission_filled.hwpx" "C:\temp\openhwpsdk-out\submission_filled_content_report.md" --require "required text"
 ```
 
 Scan HWPX feature coverage:
@@ -223,8 +223,8 @@ Use `Missing Corpus Signals` to decide which fixture is absent. Use `list-header
 Export PDFs for visual inspection:
 
 ```bat
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible export-pdf "<template.hwpx>" "test\out\template_original.pdf"
-src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible export-pdf "test\out\cell_fill_education_2rows.hwpx" "test\out\cell_fill_education_2rows.pdf"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible export-pdf "<template.hwpx>" "C:\temp\openhwpsdk-out\template_original.pdf"
+src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible export-pdf "C:\temp\openhwpsdk-out\cell_fill_education_2rows.hwpx" "C:\temp\openhwpsdk-out\cell_fill_education_2rows.pdf"
 ```
 
 ## Acceptance Criteria

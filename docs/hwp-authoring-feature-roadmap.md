@@ -57,7 +57,7 @@
    - `list-controls`, `probe-copy-from-doc`, `copy-from-doc`가 추가됐다.
    - source selector는 `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, `control:<ctrlId>:<index>`를 지원한다.
    - target selector는 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<ctrlId>:<index>`를 지원한다.
-   - 다만 현재 성공 판정은 COM 호출 성공 중심이므로, 실제 object/binary 교체 검증은 Phase 3.5에서 보강한다.
+   - image/gso source를 HWPX `control:gso:<index>` target에 붙여넣는 경우 `copy-from-doc`가 output package를 post-verify하고, COM process snapshot과 선택적 `--strict-cleanup` 진단을 report한다.
 
 4. 머리말/꼬리말 및 쪽 번호
    - `list-header-footer`가 section-aware header/footer inventory를 출력한다.
@@ -77,14 +77,15 @@
 7. 이미지 inventory/교체 일부
    - `list-pictures`가 COM 없이 picture index, package gso index, `binaryItemIDRef`, `BinData`, SHA256, pixel size, 크기/배치/wrap 속성을 보고한다.
    - package-level `replace-image-control`이 기존 `hp:pic` 속성을 유지한 채 단일 picture의 연결 image binary를 교체하고, source/before/after hash, picture/table count, 속성 보존, `validate-layout` 결과를 보고한다.
-   - COM/editor-backed replacement fallback과 `copy-from-doc` post-verify는 아직 남은 작업이다.
+   - `InsertPicture`의 HWPX `hp:sz` 단위 오입력은 guard와 docs로 방어한다.
+   - 남은 큰 작업은 COM/editor-backed replacement fallback과 shape/control 속성 재적용이다.
 
 ## 큰 공백
 
 현재 구현은 "제출서식형 HWPX의 본문/표/병합셀/중첩표/이미지 작성"에 강하다. 반대로 실제 한/글에서 자주 쓰지만 아직 약하거나 없는 축은 다음이다.
 
-- 기존 HWPX 안의 특정 그림/도형 개체를 위치, 크기, wrap, anchor, z-order를 보존한 채 안정적으로 교체하는 기능.
-- 이미지/도형 control의 `BinData` 해시, pixel size, HWPX 표시 속성, target selector를 한 번에 대조하는 inventory/diff 기능.
+- 기존 HWPX 안의 특정 그림은 package-level로 교체할 수 있지만, COM/editor-backed replacement fallback과 도형까지 포함한 속성 재적용은 아직 남아 있다.
+- 그림 control의 `BinData` 해시, pixel size, HWPX 표시 속성 inventory는 들어왔고, 도형 control까지 포함한 범용 diff는 아직 남아 있다.
 - 머리말/꼬리말의 신규 영역 생성, COM 기반 편집, 그림/표/도형 포함 반복 영역 작성, 구역별 쪽 설정.
 - 각주/미주, 메모, 덧말.
 - generic field, radio/combo/edit/button form control의 package-level 입력과 검증 contract.

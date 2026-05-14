@@ -2,7 +2,7 @@
 
 Reviewed on 2026-05-08 and updated on 2026-05-11 against the current `codex/hwp-automation` source tree.
 
-This note supersedes the first-run issue log for filling the submission template under `test/` from the Markdown draft under `test/`. Several issues below were real when discovered, but are no longer open in the same form after the later CLI and HWPX writer changes.
+This note supersedes the first-run issue log for filling a local submission-template fixture from a Markdown draft. Several issues below were real when discovered, but are no longer open in the same form after the later CLI and HWPX writer changes.
 
 ## Current implementation snapshot
 
@@ -159,6 +159,7 @@ Status: resolved for the supported image insertion paths.
 What changed:
 
 - `InsertPictureInTableCell` and `InsertPictureAtTextAnchor` call `InsertPicture` with `sizeOption=1` when `--image-mode com` is used.
+- HWP COM `InsertPicture` now rejects width/height values above `1000` as likely HWPX `hp:sz` package units; use `replace-image-control` when preserving an existing picture object's display geometry matters.
 - Supported `fill-submission-template` image lines are routed to temporary text anchors and then replaced by package-level `hp:pic` objects by default.
 - Package-level profile images are displayed at natural 100% size based on DPI, with 96 DPI as fallback, and are proportionally reduced to the document body area when needed.
 
@@ -238,6 +239,6 @@ Recommended next step:
 1. Add profile-specific `validate-content` checks for the submission template.
 2. Add regression fixtures for nested-table preservation, row-height expansion, Markdown artifact removal, image path resolution, image sizing, and repeated-anchor package writes.
 3. Improve generic anchor resolution with section-scoped semantic anchors and richer candidate reporting.
-4. Add the staged pipeline / final-promotion commands described in `test/openhwpsdk_개선사항_정리.md`.
+4. Add staged pipeline / final-promotion commands for promoting a reviewed candidate into the final output path.
 5. Normalize tracked docs and examples to readable UTF-8 Korean.
 6. Expand package-level image insertion fixtures across multiple templates and object styles.

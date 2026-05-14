@@ -1,0 +1,56 @@
+site_name: OpenHwp Automation
+site_description: Windows-first C# automation and CLI tooling for Hancom HWP/HWPX documents.
+site_url: https://zarathucorp.github.io/openhwpsdk/
+repo_url: https://github.com/zarathucorp/openhwpsdk
+repo_name: zarathucorp/openhwpsdk
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: teal
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - search.highlight
+    - search.suggest
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - CLI Reference: cli-reference.md
+  - Workflows:
+      - HWPX Validation: markdown-hwpx-validation-workflow.md
+      - Image Replacement: image-replacement.md
+  - Project:
+      - Scope and Roadmap: hwp-authoring-feature-roadmap.md
+      - Implementation Notes: submission-hwpx-code-issues.md
+      - Table Editing Design Note: table-edit-improvement-plan.md
+      - Documentation Site: documentation-site.md
