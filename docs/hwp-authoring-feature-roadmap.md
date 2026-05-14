@@ -40,17 +40,59 @@
    - `fill-submission-template --profile r-and-d-startup-2026`.
    - Markdown 표 렌더링, 이미지 anchor queue, 보고서/검증 흐름.
 
+## 완료 요약
+
+2026-05-11 이후 현재까지 구현/검증된 authoring 축은 다음과 같다.
+
+1. corpus와 inventory 기반
+   - 로컬 feature corpus 기준으로 `scan-hwpx-features`가 aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals를 출력한다.
+   - header/footer, field/form, reference, note inventory가 파일/part/type/text 단위로 분리되어 report된다.
+
+2. 제출서식 보존 작성
+   - `extract-form-map`, `probe-form-map`, `apply-form-map`, `apply-form-map --package`가 기존 HWPX 구조를 보존하면서 text/image/field/form 일부 쓰기를 수행한다.
+   - package text write는 `currentText` 검증과 sub-7pt `charPr` guard를 적용한다.
+   - `validate-layout`, `validate-content`, `scan-hwpx-features`, PDF export를 조합한 검증 흐름이 정착됐다.
+
+3. rich copy/paste 자동화
+   - `list-controls`, `probe-copy-from-doc`, `copy-from-doc`가 추가됐다.
+   - source selector는 `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, `control:<ctrlId>:<index>`를 지원한다.
+   - target selector는 `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, `control:<ctrlId>:<index>`를 지원한다.
+   - image/gso source를 HWPX `control:gso:<index>` target에 붙여넣는 경우 `copy-from-doc`가 output package를 post-verify하고, COM process snapshot과 선택적 `--strict-cleanup` 진단을 report한다.
+
+4. 머리말/꼬리말 및 쪽 번호
+   - `list-header-footer`가 section-aware header/footer inventory를 출력한다.
+   - `set-header-footer-text`가 기존 header/footer body anchor text를 package-level로 치환한다.
+   - `page-number-set`은 COM 기반 쪽 번호 삽입 smoke를 통과했다.
+
+5. 누름틀/필드/양식 일부
+   - `list-fields`가 package-level field/form item과 선택적 COM field list 결과를 병합한다.
+   - `extract-form-map`은 field/press marker와 checkbox/radio/combo/edit 같은 form object를 별도 `fields` section에 출력한다.
+   - `apply-form-map --package`는 press field text와 checkbox checked/unchecked 값을 제한적으로 쓴다.
+
+6. 표 package authoring
+   - `table-create-package`, `table-row-package`, `table-column-package`, `table-merge-package`, `table-split-package`가 단순 top-level table 범위에서 검증됐다.
+   - `table-cell-style-package`, `table-cell-align-package`, `table-cell-background-package`, `table-cell-diagonal-package`, `table-cell-size-package`가 셀 스타일/정렬/배경/대각선/크기 조정 범위에서 검증됐다.
+   - 병합/중첩/sparse/주소 불일치/객체 포함 표는 명시적으로 거부하는 방향으로 안전 범위를 좁혔다.
+
+7. 이미지 inventory/교체 일부
+   - `list-pictures`가 COM 없이 picture index, package gso index, `binaryItemIDRef`, `BinData`, SHA256, pixel size, 크기/배치/wrap 속성을 보고한다.
+   - package-level `replace-image-control`이 기존 `hp:pic` 속성을 유지한 채 단일 picture의 연결 image binary를 교체하고, source/before/after hash, picture/table count, 속성 보존, `validate-layout` 결과를 보고한다.
+   - `InsertPicture`의 HWPX `hp:sz` 단위 오입력은 guard와 docs로 방어한다.
+   - 남은 큰 작업은 COM/editor-backed replacement fallback과 shape/control 속성 재적용이다.
+
 ## 큰 공백
 
 현재 구현은 "제출서식형 HWPX의 본문/표/병합셀/중첩표/이미지 작성"에 강하다. 반대로 실제 한/글에서 자주 쓰지만 아직 약하거나 없는 축은 다음이다.
 
-- 머리말/꼬리말, 쪽 번호, 구역별 쪽 설정.
+- 기존 HWPX 안의 특정 그림은 package-level로 교체할 수 있지만, COM/editor-backed replacement fallback과 도형까지 포함한 속성 재적용은 아직 남아 있다.
+- 그림 control의 `BinData` 해시, pixel size, HWPX 표시 속성 inventory는 들어왔고, 도형 control까지 포함한 범용 diff는 아직 남아 있다.
+- 머리말/꼬리말의 신규 영역 생성, COM 기반 편집, 그림/표/도형 포함 반복 영역 작성, 구역별 쪽 설정.
 - 각주/미주, 메모, 덧말.
-- 누름틀/양식 개체/필드의 package-level 추출과 입력.
+- generic field, radio/combo/edit/button form control의 package-level 입력과 검증 contract.
 - 책갈피, 캡션, 상호 참조, 차례/색인.
 - 일반 도형, 글상자, 글맵시, 문단 띠, 그룹, 회전, z-order, wrapping.
 - 수식, 차트, OLE, 동영상/소리.
-- 표 작성의 전 범위: 새 표 만들기, 표 그리기, 셀 나누기/합치기, 줄/칸 추가/삭제, 테두리/배경, 계산식.
+- 표 작성의 남은 범위: 표 그리기, 계산식, 병합/중첩/객체 포함 표 같은 unsafe case, 더 넓은 표/셀 style coverage.
 - 일반 Markdown-to-HWP renderer: 제목, 개요 번호, 목록, 인라인 스타일, 표, 그림, 캡션, 링크를 모두 HWP native 구조로 생성.
 - PDF/시각 회귀 검증 자동화.
 - SDK parity 관점의 문서 보안: 문서 비밀번호, 배포용 문서 제한, 개인정보 텍스트 암호화.
@@ -249,6 +291,69 @@
 - merge/split 후 `scan-hwpx-features`와 PDF export가 일치한다.
 
 우선순위: P1
+
+### Phase 3.5. 이미지/개체 교체 안정화
+
+목표: 기존 문서 안의 특정 그림 개체를 "새 그림 삽입"이 아니라 "기존 개체 교체"로 다룬다. 기존 control의 위치, 크기, wrap, anchor, z-order, `treatAsChar`, margin/crop 계열 속성을 보존하고, 저장 후 실제 `BinData`와 `hp:pic` 속성을 검증한다.
+
+배경:
+
+- `copy-from-doc`는 COM select/copy/paste 호출이 모두 성공해도 실제 target 그림 바이너리가 바뀌지 않는 경우가 있었다.
+- `InsertPicture`는 새 PNG를 넣을 수 있지만 width/height 단위가 HWPX 내부 `hp:sz`와 직접 호환되지 않아 표시 크기와 배치 속성이 깨질 수 있다.
+- `validate-layout`와 `validate-content`는 표/문단 구조 안정성을 보지만, 특정 그림의 바이너리 교체 성공과 표시 속성 보존까지 증명하지 않는다.
+
+개발 단위:
+
+1. picture/control inventory
+   - `list-pictures` 또는 `inspect-pictures` 명령을 추가한다.
+   - report에는 section part, picture index, gso typeIndex, `binaryItemIDRef`, `BinData` path, SHA256, pixel size, byte size, `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, `zOrder`, `treatAsChar`, anchor/position 관련 `vertRelTo`/`horzRelTo`/offset 속성을 출력한다.
+   - `list-controls`의 gso typeIndex와 package-level `hp:pic`을 연결해 사람이 target을 고를 수 있게 한다.
+
+2. package-level `replace-image-control`
+   - 우선 COM 없이 HWPX package를 직접 수정한다.
+   - `--target control:gso:<index>` 또는 `--target image:<binaryItemIDRef>`로 기존 `hp:pic`을 찾는다.
+   - 기존 `hp:pic`/`hp:pos`/`hp:sz`/wrap 속성은 보존하고, 연결된 `BinData` entry와 `Contents/header.xml` image entry만 새 이미지에 맞게 갱신한다.
+   - 새 확장자와 mime type, manifest item, package entry 이름 충돌을 안전하게 처리한다.
+
+3. COM/editor-backed replacement fallback
+   - package-level 교체가 target 문서 구조상 안전하지 않거나 HWP editor reflow가 필요한 경우의 fallback으로 둔다.
+   - 대상 control 선택, 기존 `ShapeObjDialog`/shape properties 읽기, 기존 그림 삭제, 새 그림 삽입, 새 그림 재선택, 기존 속성 재적용 순서로 구현한다.
+   - 이 경로는 COM 상태와 HWP 버전에 민감하므로 Phase 3.5 v1의 기본 경로는 package-level이고, COM fallback은 별도 smoke와 cleanup/report 기준을 만족할 때 implemented로 표시한다.
+
+4. 교체 결과 검증
+   - source image path, pixel size, SHA256.
+   - target control id/typeIndex.
+   - before/after image id, `BinData` path, pixel size, SHA256.
+   - picture count/table count before/after.
+   - preserved object properties diff: `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, `zOrder`, `treatAsChar`, anchor/position offset 속성.
+   - input/output path가 모두 있는 replace operation은 `validate-layout` 결과를 report에 연결한다. 실행 환경상 layout validation을 건너뛰면 skipped reason을 report에 남긴다.
+   - target image hash가 source와 다르면 실패 exit code를 반환한다.
+
+5. `copy-from-doc` post-verify
+   - image/control target이 들어온 경우 output 저장 후 package-level before/after 검증을 수행한다.
+   - 호출 성공과 실제 문서 변경 성공을 구분해 report와 exit code에 반영한다.
+   - 검증 불가 상태는 applied가 아니라 review-needed 또는 failed로 분류한다.
+
+6. `InsertPicture` 단위 명확화와 방어
+   - `InsertPicture` width/height가 HWPX 내부 `hp:sz` 단위가 아님을 CLI usage와 docs에 명시한다.
+   - 비정상적으로 큰 width/height가 들어오면 경고 또는 실패 처리한다.
+   - HWPX 내부 단위로 기존 object 크기를 재사용하려는 경우 `replace-image-control`을 사용하도록 안내한다.
+
+7. COM cleanup/report 강화
+   - COM-backed 명령 시작/종료 시 `running_hwp_processes` 요약을 report에 남긴다.
+   - `--strict-cleanup` 또는 후속 진단 모드로 "이번 명령 이후 새로 남은 제목 없는 Hwp 프로세스"를 감지한다.
+   - 사용자 소유 HWP 창을 강제 종료하지 않고, 잔류/잠금 가능성을 명확히 보고한다.
+
+합격 기준:
+
+- 기존 그림이 있는 fixture에서 `replace-image-control` 실행 후 picture count와 table count가 유지된다.
+- target `BinData` SHA256이 source image와 일치한다.
+- target `hp:pic`의 `hp:sz`, `hp:pos`, `orgSz`, `curSz`, `imgClip`, `outMargin`, `textWrap`, `textFlow`, `zOrder`, `treatAsChar`, anchor/position offset 속성 보존 여부가 report에 명시된다.
+- replace operation report는 `validate-layout` 결과를 포함하거나, 검증을 건너뛴 이유를 명시한다.
+- `copy-from-doc`는 실제 binary/object 교체 실패를 `verdict: applied`로 보고하지 않는다.
+- `InsertPicture` 문서/usage만 보고는 HWPX 내부 단위를 그대로 넣는 실수를 피할 수 있다.
+
+우선순위: P0/P1
 
 ### Phase 4. 캡션, 책갈피, 상호 참조, 차례/색인
 
@@ -495,44 +600,100 @@
 
 ## 추천 개발 순서
 
-1. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
-2. Phase 10 일부: PDF visual smoke harness.
-3. Phase 1: header/footer text write와 page number support.
-4. Phase 2: field/누름틀 named fill.
-5. Phase 3: table authoring 기본 create/add/delete/merge/split.
-6. Phase 4: caption/cross-reference COM insert/refresh workflow.
-7. Phase 5: footnote/endnote preservation과 COM insert.
-8. Phase 6: shape inventory diff와 text box write.
-9. Phase 7: equation inventory와 COM insert.
-10. Phase 8: chart/OLE/media preservation.
-11. Phase 9: 일반 Markdown-to-HWP renderer.
-12. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
+1. 완료: Phase 3.5 일부: picture/control inventory.
+2. 완료: Phase 3.5 일부: package-level `replace-image-control`.
+3. 완료: Phase 3.5 일부: `copy-from-doc` image target post-verify.
+4. 완료: Phase 3.5 일부: `InsertPicture` 단위/usage 방어.
+5. 다음: Phase 3.5 일부: COM/editor-backed replacement fallback과 cleanup diagnostics.
+6. Phase 0 완료분 유지보수: real-world fixture를 계속 추가하고 expected report를 고정한다.
+7. Phase 10 일부: PDF visual smoke harness.
+8. Phase 1: header/footer 신규 영역 생성, COM 기반 편집, rich object support, section page setup.
+9. Phase 2: field/누름틀 named fill.
+10. Phase 3: table authoring 미완료 항목과 formulas inventory.
+11. Phase 4: caption/cross-reference COM insert/refresh workflow.
+12. Phase 5: footnote/endnote preservation과 COM insert.
+13. Phase 6: shape inventory diff와 text box write.
+14. Phase 7: equation inventory와 COM insert.
+15. Phase 8: chart/OLE/media preservation.
+16. Phase 9: 일반 Markdown-to-HWP renderer.
+17. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
 
 ## 바로 다음 커밋 후보
 
-### 후보 A: PDF visual smoke harness
+### 후보 A: Picture/control inventory
+
+상태: 완료. `list-pictures` 명령으로 구현됐다.
+
+- `list-pictures` 또는 `inspect-pictures` 명령을 추가한다.
+- gso typeIndex와 package-level `hp:pic`/`BinData`/hash/size/position/wrap 속성을 한 report에 연결한다.
+- 실제 HWPX의 특정 그림이 어떤 binary와 속성을 갖는지 COM 없이 확인 가능하게 한다.
+
+이유: 이미지 교체는 target 식별과 before/after 증명이 먼저 안정화되어야 한다.
+
+### 후보 B: Package-level `replace-image-control`
+
+상태: 완료. package-level `replace-image-control` 명령으로 구현됐다.
+
+- 기존 `hp:pic` 속성을 보존하면서 연결된 `BinData` image만 교체한다.
+- source/target before/after hash, pixel size, object property diff를 report에 남긴다.
+- 실패 시 partial output과 검증 실패 이유를 명확히 남긴다.
+
+이유: `copy-from-doc`/`InsertPicture` 조합은 특정 기존 그림 교체 요구에 충분히 안정적이지 않다.
+
+### 후보 C: `copy-from-doc` image target post-verify
+
+상태: 완료. image/gso source를 HWPX `control:gso:<index>` target에 붙여넣은 경우 output package를 post-verify한다.
+
+- `copy-from-doc` report를 COM 호출 성공과 실제 package 변경 성공으로 분리한다.
+- source image hash와 output target image hash, target picture count 보존 여부를 검증한다.
+- 검증 실패 시 `post_verify=failed`를 출력하고 명령을 nonzero로 종료한다.
+
+이유: "붙여넣기 호출 성공"과 "원하는 그림이 바뀜"은 다르다.
+
+### 후보 D: `InsertPicture` unit guard and docs
+
+상태: 완료. HWP COM `InsertPicture` width/height guard와 usage/docs 경고가 추가됐다.
+
+- CLI usage와 docs에 width/height 단위 주의사항을 추가한다.
+- `1000`을 넘는 width/height 값은 HWPX `hp:sz`를 잘못 넣은 것으로 보고 거부한다.
+- 기존 object 크기 보존은 `replace-image-control`로 유도한다.
+
+이유: HWPX 내부 `hp:sz` 값을 COM `InsertPicture` width/height로 착각하면 문서가 크게 깨진다.
+
+### 후보 E: COM cleanup diagnostics
+
+상태: 일부 완료. `probe-copy-from-doc`와 `copy-from-doc` report에 COM 작업 전후 HWP process snapshot이 추가됐고, 새 HWP process가 남으면 실패시키는 `--strict-cleanup` 진단 옵션이 들어갔다.
+
+- COM-backed 명령 report에 시작/종료 HWP process summary를 남긴다.
+- 사용자 HWP 창을 강제 종료하지 않는 strict cleanup 진단 옵션을 검토한다.
+
+이유: 제목 없는 HWP 프로세스 잔류는 파일 잠금과 다음 작업 지연의 반복 원인이다.
+
+### 후보 F: PDF visual smoke harness
 
 - 로컬 feature fixture corpus의 대표 fixture를 PDF로 export하는 smoke command 정리.
 - scan report와 PDF export 결과를 같은 report 묶음으로 남긴다.
 - HWP COM이 불안정하면 `diagnose-com`과 visible export를 우선 실행한다.
 
-이유: scanner inventory는 구조 신호만 보므로, 실제 한글/ PDF 표시 여부를 별도 검증해야 한다.
+이유: scanner inventory는 구조 신호만 보므로, 실제 한글/PDF 표시 여부를 별도 검증해야 한다.
 
-### 후보 B: Header/footer inventory
+### 후보 G: Header/footer rich authoring
 
-- 기존 header/footer paragraph anchor에 text write.
-- section별 header/footer/page number smoke test.
+- 신규 header/footer repeated area 생성.
+- header/footer 내부 그림/표/도형 포함 rich object 작성과 보존 검증.
+- section별 page setup과 COM-backed header/footer editing smoke test.
 
-이유: 공문/제안서/보고서에서 머리말, 꼬리말, 쪽 번호는 매우 흔하다.
+이유: 기본 inventory/text write/page-number smoke는 들어왔고, 남은 실무 gap은 반복 영역의 생성과 rich object 편집이다.
 
-### 후보 C: 누름틀/필드 map target
+### 후보 H: Field/form write contracts
 
-- COM `field-list-raw`와 package scan 결과를 비교하는 report.
-- `extract-form-map`에 `fields` section 추가.
+- generic field, radio, combo, edit, button control의 write contract를 field type별로 분리한다.
+- 값 쓰기 전후 package value/currentText mismatch 정책을 정한다.
+- unsupported control은 skipped_unsafe로 남기고 implemented로 표시하지 않는다.
 
-이유: 실제 한글 양식 자동화는 좌표/문자열 치환보다 named field/누름틀 fill이 훨씬 안전하다.
+이유: field inventory와 press/checkbox 일부 쓰기는 들어왔고, 남은 위험은 form control별 의미가 다른 값을 한 방식으로 처리하는 것이다.
 
-### 후보 D: SDK parity matrix
+### 후보 I: SDK parity matrix
 
 - 공식 한글 SDK 범주와 현재 CLI command를 표로 매핑한다.
 - `export-pdf`, `scan-hwpx-features`, `list-fields`, `list-controls`, table/header/footer commands의 검증 command를 같이 적는다.

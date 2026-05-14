@@ -44,8 +44,10 @@
     <Compile Include="HwpxContentValidator.cs" />
     <Compile Include="HwpxFeatureScanner.cs" />
     <Compile Include="HwpxHeaderFooterTextWriter.cs" />
+    <Compile Include="HwpxImageControlReplacer.cs" />
     <Compile Include="HwpxLayoutValidator.cs" />
     <Compile Include="HwpxPackageImageInserter.cs" />
+    <Compile Include="HwpxPictureInspector.cs" />
     <Compile Include="HwpxSectionPartResolver.cs" />
     <Compile Include="HwpxTableCellAlignEditor.cs" />
     <Compile Include="HwpxTableCellBackgroundEditor.cs" />

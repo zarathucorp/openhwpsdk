@@ -99,6 +99,7 @@ Current profile behavior:
 
 - Supported Markdown body tables are rendered as HWPX table objects by default. Use `--markdown-table-mode text` only when preserving the original HWPX table count matters more than table semantics.
 - Supported Markdown image lines become temporary text anchors and are inserted by default with package-level `BinData`/`hp:pic` updates. Use `--image-mode com` only when local HWP COM is healthy and editor-backed insertion is required.
+- HWP COM `InsertPicture` width/height values are not HWPX `hp:sz` units. Values above `1000` are rejected as likely package units; use `replace-image-control` when preserving an existing picture object's size and position matters.
 - The report lists template/profile compatibility, total Markdown tables/images, table handling mode, rendered/converted table counts, configured asset roots, resolved image paths, missing image candidate paths, image anchors queued, image writes applied/failed/pending, and image references not mapped by the profile.
 - Package text writes guard against tiny placeholder styles by replacing sub-7pt `charPr` references on written runs. HWP COM table-cell writes set 10pt before `InsertText`.
 - Package cell writes validate extracted `currentText` by default. Set `validateCurrentText="false"` on `writeText` only when a staged write deliberately targets already-changed text.
@@ -118,13 +119,22 @@ Scan a file or corpus to see which HWPX authoring features are present:
 
 ```powershell
 & $cli scan-hwpx-features 'C:\temp\hwpx-samples' 'C:\temp\hwpx_feature_scan.md'
+& $cli list-pictures 'C:\temp\template.hwpx' 'C:\temp\picture_inventory.md'
 & $cli list-header-footer 'C:\temp\template.hwpx' 'C:\temp\header_footer_inventory.md'
 & $cli set-header-footer-text 'C:\temp\template.hwpx' 'C:\temp\header_footer_text_write.hwpx' --kind header --section section0 --anchor 'Header fixture' --text 'Updated Header Fixture' --report 'C:\temp\header_footer_text_write.md'
 & $cli --visible page-number-set '<template.hwpx>' 'C:\temp\page_numbered.hwpx' --draw-pos 5 --side-char '-' --report 'C:\temp\page_numbered.md'
 & $cli --visible list-fields '<template.hwpx>' 'C:\temp\field_inventory.md' --com
 ```
 
-The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Treat broad writing/editing support as separate work.
+The scan report includes aggregate counts, authoring coverage, detailed feature groups, missing corpus signals, per-file totals, and inventory tables for header/footer, field/form, reference, and note signals. Use `list-pictures` for a COM-free picture inventory with package-order graphical-object index, image reference, resolved `BinData`, pixel size, SHA256, and key placement/wrap properties. Use `list-header-footer` for a focused section-aware header/footer report with body/reference, `applyPageType`, text/table/picture/shape counts, and source XML part paths. Use `set-header-footer-text` for package-level replacement of an existing text anchor inside a header/footer body; verify with `list-header-footer`, `validate-content`, and `validate-layout`. Use `page-number-set` for COM-backed page number insertion; verify with `scan-hwpx-features` and `validate-layout`. Use `list-fields --com` to merge package field/form rows with HWP COM field-list output in one report. Treat broad writing/editing support as separate work.
+
+For package-level image replacement that preserves an existing picture object's size, position, wrap, margin, crop, z-order, and anchor properties:
+
+```powershell
+& $cli replace-image-control '<template.hwpx>' 'test\out\image_replaced.hwpx' --target control:gso:0 --image '<new-image.png>' --report 'test\out\image_replace_report.md'
+```
+
+`replace-image-control` is COM-free. The `control:gso:<index>` target uses the package-order index from `list-pictures`; use `list-controls` when editor control identity is required. It also accepts `picture:<index>` and `image:<binaryItemIDRef>`, fails on shared image references or shared resolved `BinData` paths, and gates success by hash/count/property preservation checks.
 
 ## Markdown Tables Into Existing HWPX Tables
 
@@ -153,6 +163,7 @@ Merged tables can make row/column movement misleading. Verify with map/probe evi
 Inspect controls in the reference document:
 
 ```powershell
+& $cli list-pictures '<reference.hwpx>' 'test\out\reference_pictures.md'
 & $cli --visible list-controls '<reference.hwpx>' 'test\out\reference_controls.md'
 ```
 
@@ -168,7 +179,7 @@ Copy through HWP's editor-backed clipboard path:
 & $cli --visible copy-from-doc '<reference.hwpx>' '<target.hwpx>' 'test\out\copy_from_doc.hwpx' --source image:0 --target doc-end --report 'test\out\copy_from_doc.md'
 ```
 
-Supported source selectors are `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` starts at the paragraph containing the text. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
+Supported source selectors are `all`, `paragraph-to-end:<text>`, `table:<index>`, `image:<index>`, and `control:<ctrlId>:<index>`. `image:<index>` maps to `gso` controls in tested HWPX files; use the `typeIndex` column from `list-controls`, not the global `index` column. `paragraph-to-end:<text>` starts at the paragraph containing the text. Supported target selectors are `doc-end`, `anchor:<text>`, `cell:<table,rowMove,colMove>`, and `control:<ctrlId>:<index>`. Cell targets use HWP movement-count selection from the first cell, not robust absolute grid addressing. For image/gso sources copied onto HWPX `control:gso:<index>` targets, `copy-from-doc` post-verifies the saved package and separates COM step success from actual replacement success with `post_verify=verified|failed|skipped`. Add `--strict-cleanup` when a newly remaining HWP process should make copy/probe fail without terminating user-owned HWP windows. Validate copied output with `scan-hwpx-features`, `validate-layout`, and visual/PDF checks when placement matters.
 
 ## Acceptance Checklist
 

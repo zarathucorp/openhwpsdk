@@ -70,30 +70,80 @@ namespace OpenHwp.Automation.Cli
 
         internal static string DescribeHwpProcesses()
         {
+            return DescribeHwpProcesses(SnapshotHwpProcesses());
+        }
+
+        internal static IList<HwpProcessInfo> SnapshotHwpProcesses()
+        {
             try
             {
                 var processes = Process.GetProcessesByName("Hwp");
-                if (processes.Length == 0)
-                {
-                    return "none";
-                }
-
-                var descriptions = new List<string>();
+                var snapshots = new List<HwpProcessInfo>();
                 foreach (var process in processes)
                 {
-                    descriptions.Add(DescribeProcess(process));
+                    snapshots.Add(SnapshotProcess(process));
                     process.Dispose();
                 }
 
-                return string.Join("; ", descriptions.ToArray());
+                return snapshots;
             }
             catch (Exception ex)
             {
-                return "unavailable: " + ex.GetType().Name + ": " + ex.Message;
+                return new List<HwpProcessInfo>
+                {
+                    new HwpProcessInfo(-1, "unavailable: " + ex.GetType().Name + ": " + ex.Message)
+                };
             }
         }
 
-        private static string DescribeProcess(Process process)
+        internal static string DescribeHwpProcesses(IEnumerable<HwpProcessInfo> processes)
+        {
+            var descriptions = new List<string>();
+            foreach (var process in processes ?? new HwpProcessInfo[0])
+            {
+                descriptions.Add(process.Description);
+            }
+
+            return descriptions.Count == 0 ? "none" : string.Join("; ", descriptions.ToArray());
+        }
+
+        internal static IList<HwpProcessInfo> FindNewHwpProcesses(IEnumerable<HwpProcessInfo> before, IEnumerable<HwpProcessInfo> after)
+        {
+            var beforeIds = new HashSet<int>();
+            foreach (var process in before ?? new HwpProcessInfo[0])
+            {
+                if (process.Id >= 0)
+                {
+                    beforeIds.Add(process.Id);
+                }
+            }
+
+            var result = new List<HwpProcessInfo>();
+            foreach (var process in after ?? new HwpProcessInfo[0])
+            {
+                if (process.Id >= 0 && !beforeIds.Contains(process.Id))
+                {
+                    result.Add(process);
+                }
+            }
+
+            return result;
+        }
+
+        internal static bool IsSnapshotAvailable(IEnumerable<HwpProcessInfo> processes)
+        {
+            foreach (var process in processes ?? new HwpProcessInfo[0])
+            {
+                if (process.Id < 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static HwpProcessInfo SnapshotProcess(Process process)
         {
             var description = "pid=" + process.Id;
 
@@ -118,7 +168,20 @@ namespace OpenHwp.Automation.Cli
                 // Process start time may be unavailable for elevated processes.
             }
 
-            return description;
+            return new HwpProcessInfo(process.Id, description);
+        }
+
+        internal sealed class HwpProcessInfo
+        {
+            public HwpProcessInfo(int id, string description)
+            {
+                Id = id;
+                Description = description ?? string.Empty;
+            }
+
+            public int Id { get; private set; }
+
+            public string Description { get; private set; }
         }
 
         private void OnTimeout(object state)

@@ -156,6 +156,10 @@ namespace OpenHwp.Automation.Cli
                     return ValidateContent(commandArgs);
                 case "scan-hwpx-features":
                     return ScanHwpxFeatures(commandArgs);
+                case "list-pictures":
+                    return ListPictures(commandArgs);
+                case "replace-image-control":
+                    return ReplaceImageControl(commandArgs);
                 case "list-header-footer":
                     return ListHeaderFooter(commandArgs);
                 case "set-header-footer-text":
@@ -709,6 +713,13 @@ namespace OpenHwp.Automation.Cli
                 }
 
                 parameters[args[i].Substring(0, separatorIndex)] = ParseValue(args[i].Substring(separatorIndex + 1));
+            }
+
+            if (string.Equals(featureName, "insertpicture", StringComparison.OrdinalIgnoreCase))
+            {
+                HwpSession.ValidateInsertPictureDimensions(
+                    GetInt(parameters, new[] { "width" }, 200),
+                    GetInt(parameters, new[] { "height" }, 200));
             }
 
             using (var hwp = CreateSession(visible, keepOpen))
@@ -2799,6 +2810,115 @@ namespace OpenHwp.Automation.Cli
             return 0;
         }
 
+        private static int ListPictures(string[] args)
+        {
+            if (args.Length < 2 || args.Length > 3)
+            {
+                Console.Error.WriteLine("Usage: list-pictures <hwpxFileOrDirectory> [reportMarkdownPath]");
+                return 1;
+            }
+
+            var summary = HwpxPictureInspector.Inspect(args[1]);
+            if (args.Length == 3)
+            {
+                HwpxPictureInspector.WriteMarkdown(summary, args[2]);
+            }
+
+            Console.WriteLine("input=" + summary.InputPath);
+            Console.WriteLine("files=" + summary.Files.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_errors=" + summary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("xml_parse_errors=" + summary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("pictures=" + summary.PictureCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("matched_bindata=" + summary.MatchedBinDataCount.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("missing_bindata=" + summary.MissingBinDataCount.ToString(CultureInfo.InvariantCulture));
+            if (args.Length == 3)
+            {
+                Console.WriteLine(args[2]);
+            }
+
+            return summary.PackageErrors == 0 && summary.XmlParseErrors == 0 ? 0 : 2;
+        }
+
+        private static int ReplaceImageControl(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: replace-image-control <inputHwpxPath> <outputHwpxPath> --target control:gso:<index>|picture:<index>|image:<binaryItemIDRef> --image imagePath [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            var options = new ReplaceImageControlOptions
+            {
+                InputPath = args[1],
+                OutputPath = args[2]
+            };
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--target", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Target = RequireValue(args, ref index, "--target");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--image", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ImagePath = RequireValue(args, ref index, "--image");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    options.ReportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unknown replace-image-control option: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(options.Target) || string.IsNullOrWhiteSpace(options.ImagePath))
+            {
+                Console.Error.WriteLine("replace-image-control requires --target and --image.");
+                return 1;
+            }
+
+            var result = HwpxImageControlReplacer.Replace(options);
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                HwpxImageControlReplacer.WriteMarkdown(result, options.ReportPath);
+            }
+
+            Console.WriteLine(options.OutputPath);
+            Console.WriteLine("verdict=" + result.Verdict);
+            if (!string.IsNullOrWhiteSpace(result.FailureReason))
+            {
+                Console.WriteLine("failure=" + result.FailureReason);
+            }
+
+            Console.WriteLine("target=" + result.Target);
+            Console.WriteLine("target_part=" + result.TargetPart);
+            Console.WriteLine("target_picture_index=" + result.TargetPictureIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("target_package_gso_index=" + result.TargetPackageGsoIndex.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("image_reference=" + result.ImageReference);
+            Console.WriteLine("source_sha256=" + result.SourceImage.Sha256);
+            Console.WriteLine("before_sha256=" + result.BeforeImage.Sha256);
+            Console.WriteLine("after_sha256=" + result.AfterImage.Sha256);
+            Console.WriteLine("picture_count_before=" + result.PictureCountBefore.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("picture_count_after=" + result.PictureCountAfter.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("table_count_before=" + result.TableCountBefore.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("table_count_after=" + result.TableCountAfter.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("properties_preserved=" + (result.PropertiesPreserved ? "true" : "false"));
+            Console.WriteLine("hash_verified=" + (result.HashVerified ? "true" : "false"));
+            Console.WriteLine("layout_passed=" + (result.LayoutPassed.HasValue ? (result.LayoutPassed.Value ? "true" : "false") : "skipped"));
+            if (!string.IsNullOrWhiteSpace(options.ReportPath))
+            {
+                Console.WriteLine(options.ReportPath);
+            }
+
+            return result.Success ? 0 : 2;
+        }
+
         private static int ListHeaderFooter(string[] args)
         {
             if (args.Length < 2 || args.Length > 3)
@@ -3081,13 +3201,14 @@ namespace OpenHwp.Automation.Cli
         {
             if (args.Length < 3)
             {
-                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
                 return 1;
             }
 
             string sourceSelectorText = null;
             var targetSelectorText = "doc-end";
             string reportPath = null;
+            var strictCleanup = false;
 
             for (var index = 3; index < args.Length; index++)
             {
@@ -3106,6 +3227,12 @@ namespace OpenHwp.Automation.Cli
                 if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
                 {
                     reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--strict-cleanup", StringComparison.OrdinalIgnoreCase))
+                {
+                    strictCleanup = true;
                     continue;
                 }
 
@@ -3138,6 +3265,8 @@ namespace OpenHwp.Automation.Cli
             string targetNote;
             bool sourceSelected;
             bool targetSelected;
+            var hwpProcessesBefore = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesBeforeText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesBefore);
 
             using (var hwp = CreateSession(visible, keepOpen))
             {
@@ -3153,6 +3282,17 @@ namespace OpenHwp.Automation.Cli
                 targetSelected = TrySelectCopyLocation(hwp, target, true, out targetNote);
             }
 
+            var hwpProcessesAfter = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesAfterText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesAfter);
+            var newHwpProcesses = ComOperationWatchdog.FindNewHwpProcesses(hwpProcessesBefore, hwpProcessesAfter);
+            var newHwpProcessesText = ComOperationWatchdog.DescribeHwpProcesses(newHwpProcesses);
+            var cleanupAvailable = ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesBefore) && ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesAfter);
+            var cleanupPassed = !strictCleanup || (cleanupAvailable && newHwpProcesses.Count == 0);
+            var cleanupStatus = FormatStrictCleanupStatus(strictCleanup, cleanupAvailable, cleanupPassed);
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBeforeText);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfterText);
+            Console.WriteLine("hwp_processes_new=" + newHwpProcessesText);
+            Console.WriteLine("strict_cleanup=" + cleanupStatus);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_note=" + sourceNote);
             Console.WriteLine("target_selected=" + BoolText(targetSelected));
@@ -3160,24 +3300,25 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, reportPath);
+                WriteCopyProbeReport(args[1], args[2], source, target, sourceSelected, sourceNote, targetSelected, targetNote, hwpProcessesBeforeText, hwpProcessesAfterText, newHwpProcessesText, cleanupStatus, cleanupPassed, reportPath);
                 Console.WriteLine(reportPath);
             }
 
-            return sourceSelected && targetSelected ? 0 : 2;
+            return sourceSelected && targetSelected && cleanupPassed ? 0 : 2;
         }
 
         private static int CopyFromDoc(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 4)
             {
-                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+                Console.Error.WriteLine("Usage: copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
                 return 1;
             }
 
             string sourceSelectorText = null;
             var targetSelectorText = "doc-end";
             string reportPath = null;
+            var strictCleanup = false;
 
             for (var index = 4; index < args.Length; index++)
             {
@@ -3196,6 +3337,12 @@ namespace OpenHwp.Automation.Cli
                 if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
                 {
                     reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--strict-cleanup", StringComparison.OrdinalIgnoreCase))
+                {
+                    strictCleanup = true;
                     continue;
                 }
 
@@ -3231,6 +3378,9 @@ namespace OpenHwp.Automation.Cli
             bool sourceCopied;
             bool targetSelected;
             bool pasted;
+            CopyFromDocVerification verification;
+            var hwpProcessesBefore = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesBeforeText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesBefore);
 
             using (var sourceHwp = CreateSession(visible, keepOpen))
             {
@@ -3258,6 +3408,19 @@ namespace OpenHwp.Automation.Cli
                 }
             }
 
+            var hwpProcessesAfter = ComOperationWatchdog.SnapshotHwpProcesses();
+            var hwpProcessesAfterText = ComOperationWatchdog.DescribeHwpProcesses(hwpProcessesAfter);
+            var newHwpProcesses = ComOperationWatchdog.FindNewHwpProcesses(hwpProcessesBefore, hwpProcessesAfter);
+            var newHwpProcessesText = ComOperationWatchdog.DescribeHwpProcesses(newHwpProcesses);
+            var cleanupAvailable = ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesBefore) && ComOperationWatchdog.IsSnapshotAvailable(hwpProcessesAfter);
+            var cleanupPassed = !strictCleanup || (cleanupAvailable && newHwpProcesses.Count == 0);
+            var cleanupStatus = FormatStrictCleanupStatus(strictCleanup, cleanupAvailable, cleanupPassed);
+            verification = VerifyCopyFromDocImageReplacement(args[1], args[2], args[3], source, target, pasted);
+
+            Console.WriteLine("hwp_processes_before=" + hwpProcessesBeforeText);
+            Console.WriteLine("hwp_processes_after=" + hwpProcessesAfterText);
+            Console.WriteLine("hwp_processes_new=" + newHwpProcessesText);
+            Console.WriteLine("strict_cleanup=" + cleanupStatus);
             Console.WriteLine("source_selected=" + BoolText(sourceSelected));
             Console.WriteLine("source_copied=" + BoolText(sourceCopied));
             Console.WriteLine("source_note=" + sourceNote);
@@ -3265,6 +3428,12 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("target_note=" + targetNote);
             Console.WriteLine("pasted=" + BoolText(pasted));
             Console.WriteLine("paste_note=" + pasteNote);
+            Console.WriteLine("post_verify=" + verification.Verdict);
+            if (!string.IsNullOrWhiteSpace(verification.Note))
+            {
+                Console.WriteLine("post_verify_note=" + verification.Note);
+            }
+
             if (pasted)
             {
                 Console.WriteLine(args[3]);
@@ -3272,11 +3441,11 @@ namespace OpenHwp.Automation.Cli
 
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
-                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, reportPath);
+                WriteCopyFromDocReport(args[1], args[2], args[3], source, target, sourceSelected, sourceCopied, sourceNote, targetSelected, targetNote, pasted, pasteNote, verification, hwpProcessesBeforeText, hwpProcessesAfterText, newHwpProcessesText, cleanupStatus, cleanupPassed, reportPath);
                 Console.WriteLine(reportPath);
             }
 
-            return sourceSelected && sourceCopied && targetSelected && pasted ? 0 : 2;
+            return sourceSelected && sourceCopied && targetSelected && pasted && (!verification.Required || verification.Verified) && cleanupPassed ? 0 : 2;
         }
 
         private static int DemoList()
@@ -4146,6 +4315,138 @@ namespace OpenHwp.Automation.Cli
             return false;
         }
 
+        private static CopyFromDocVerification VerifyCopyFromDocImageReplacement(
+            string sourcePath,
+            string targetPath,
+            string outputPath,
+            CopyLocation source,
+            CopyLocation target,
+            bool pasted)
+        {
+            var result = new CopyFromDocVerification
+            {
+                Verdict = "skipped",
+                SourceSelector = source == null ? string.Empty : source.Raw,
+                TargetSelector = target == null ? string.Empty : target.Raw
+            };
+
+            if (!pasted)
+            {
+                result.Note = "paste was not applied";
+                return result;
+            }
+
+            if (!IsGsoImageSelector(source) || !IsGsoControlTarget(target))
+            {
+                result.Note = "post-verify currently applies only to image/control:gso source copied onto control:gso target";
+                return result;
+            }
+
+            result.Required = true;
+            if (!IsHwpxPath(sourcePath) || !IsHwpxPath(targetPath) || !IsHwpxPath(outputPath))
+            {
+                result.Verdict = "failed";
+                result.Note = "post-verify requires HWPX source, target, and output paths";
+                return result;
+            }
+
+            try
+            {
+                var sourceInventory = HwpxPictureInspector.Inspect(sourcePath);
+                var targetBeforeInventory = HwpxPictureInspector.Inspect(targetPath);
+                var outputInventory = HwpxPictureInspector.Inspect(outputPath);
+                var sourcePicture = FindPictureByGsoIndex(sourceInventory, source.Index);
+                var beforePicture = FindPictureByGsoIndex(targetBeforeInventory, target.Index);
+                var afterPicture = FindPictureByGsoIndex(outputInventory, target.Index);
+
+                result.SourcePictureCount = sourceInventory.PictureCount;
+                result.TargetPictureCountBefore = targetBeforeInventory.PictureCount;
+                result.TargetPictureCountAfter = outputInventory.PictureCount;
+                result.SourceBinData = sourcePicture == null ? string.Empty : sourcePicture.BinDataPath;
+                result.TargetBeforeBinData = beforePicture == null ? string.Empty : beforePicture.BinDataPath;
+                result.TargetAfterBinData = afterPicture == null ? string.Empty : afterPicture.BinDataPath;
+                result.SourceSha256 = sourcePicture == null ? string.Empty : sourcePicture.Sha256;
+                result.TargetBeforeSha256 = beforePicture == null ? string.Empty : beforePicture.Sha256;
+                result.TargetAfterSha256 = afterPicture == null ? string.Empty : afterPicture.Sha256;
+                result.SourcePixels = sourcePicture == null ? string.Empty : sourcePicture.PixelSize;
+                result.TargetBeforePixels = beforePicture == null ? string.Empty : beforePicture.PixelSize;
+                result.TargetAfterPixels = afterPicture == null ? string.Empty : afterPicture.PixelSize;
+
+                if (sourcePicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "source image/gso picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                if (beforePicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "target before picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                if (afterPicture == null)
+                {
+                    result.Verdict = "failed";
+                    result.Note = "target after picture was not found in HWPX package inventory";
+                    return result;
+                }
+
+                result.HashMatched = !string.IsNullOrWhiteSpace(result.SourceSha256) &&
+                    string.Equals(result.SourceSha256, result.TargetAfterSha256, StringComparison.OrdinalIgnoreCase);
+                result.PictureCountPreserved = result.TargetPictureCountBefore == result.TargetPictureCountAfter;
+                result.TargetChanged = !string.Equals(result.TargetBeforeSha256, result.TargetAfterSha256, StringComparison.OrdinalIgnoreCase);
+                result.Verified = result.HashMatched && result.PictureCountPreserved;
+                result.Verdict = result.Verified ? "verified" : "failed";
+                if (!result.Verified)
+                {
+                    result.Note = "source image hash did not match target after hash or target picture count changed";
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.Verdict = "failed";
+                result.Note = "post-verify failed: " + ex.GetType().Name + ": " + ex.Message;
+                return result;
+            }
+        }
+
+        private static bool IsGsoImageSelector(CopyLocation source)
+        {
+            if (source == null)
+            {
+                return false;
+            }
+
+            return string.Equals(source.Kind, "image", StringComparison.OrdinalIgnoreCase) ||
+                   (string.Equals(source.Kind, "control", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(source.CtrlId, "gso", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsGsoControlTarget(CopyLocation target)
+        {
+            return target != null &&
+                   string.Equals(target.Kind, "control", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(target.CtrlId, "gso", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsHwpxPath(string path)
+        {
+            return string.Equals(Path.GetExtension(path), ".hwpx", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static PictureInventoryItem FindPictureByGsoIndex(PictureInventorySummary summary, int gsoIndex)
+        {
+            return summary == null
+                ? null
+                : summary.Files
+                    .SelectMany(file => file.Pictures)
+                    .FirstOrDefault(picture => picture.GsoTypeIndex == gsoIndex);
+        }
+
         private static void WriteCopyProbeReport(
             string sourcePath,
             string targetPath,
@@ -4155,8 +4456,19 @@ namespace OpenHwp.Automation.Cli
             string sourceNote,
             bool targetSelected,
             string targetNote,
+            string hwpProcessesBefore,
+            string hwpProcessesAfter,
+            string newHwpProcesses,
+            string cleanupStatus,
+            bool cleanupPassed,
             string reportPath)
         {
+            var verdict = sourceSelected && targetSelected ? "ready" : "blocked";
+            if (sourceSelected && targetSelected && !cleanupPassed)
+            {
+                verdict = "failed-cleanup";
+            }
+
             var report = new StringBuilder();
             report.AppendLine("# Copy From Doc Probe");
             report.AppendLine();
@@ -4164,7 +4476,9 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- target: `" + targetPath + "`");
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
-            report.AppendLine("- verdict: " + (sourceSelected && targetSelected ? "ready" : "blocked"));
+            report.AppendLine("- verdict: " + verdict);
+            report.AppendLine();
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter, newHwpProcesses, cleanupStatus);
             report.AppendLine();
             report.AppendLine("| side | selected | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4195,8 +4509,26 @@ namespace OpenHwp.Automation.Cli
             string targetNote,
             bool pasted,
             string pasteNote,
+            CopyFromDocVerification verification,
+            string hwpProcessesBefore,
+            string hwpProcessesAfter,
+            string newHwpProcesses,
+            string cleanupStatus,
+            bool cleanupPassed,
             string reportPath)
         {
+            verification = verification ?? new CopyFromDocVerification { Verdict = "skipped", Note = "not evaluated" };
+            var comApplied = sourceSelected && sourceCopied && targetSelected && pasted;
+            var verdict = comApplied ? "applied" : "failed";
+            if (comApplied && verification.Required && !verification.Verified)
+            {
+                verdict = "failed-post-verify";
+            }
+            else if (comApplied && !cleanupPassed)
+            {
+                verdict = "failed-cleanup";
+            }
+
             var report = new StringBuilder();
             report.AppendLine("# Copy From Doc Report");
             report.AppendLine();
@@ -4205,7 +4537,9 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- output: `" + outputPath + "`");
             report.AppendLine("- source selector: `" + source.Raw + "`");
             report.AppendLine("- target selector: `" + target.Raw + "`");
-            report.AppendLine("- verdict: " + (sourceSelected && sourceCopied && targetSelected && pasted ? "applied" : "failed"));
+            report.AppendLine("- verdict: " + verdict);
+            report.AppendLine();
+            AppendComProcessDiagnostics(report, hwpProcessesBefore, hwpProcessesAfter, newHwpProcesses, cleanupStatus);
             report.AppendLine();
             report.AppendLine("| step | ok | note |");
             report.AppendLine("| --- | --- | --- |");
@@ -4214,7 +4548,73 @@ namespace OpenHwp.Automation.Cli
             AppendCopyReportRow(report, "target select", targetSelected, targetNote);
             AppendCopyReportRow(report, "paste", pasted, pasteNote);
 
+            report.AppendLine();
+            report.AppendLine("## Post Verify");
+            report.AppendLine();
+            report.AppendLine("- verdict: " + verification.Verdict);
+            report.AppendLine("- required: " + BoolText(verification.Required));
+            report.AppendLine("- verified: " + BoolText(verification.Verified));
+            if (!string.IsNullOrWhiteSpace(verification.Note))
+            {
+                report.AppendLine("- note: " + verification.Note);
+            }
+
+            report.AppendLine("- source selector: `" + verification.SourceSelector + "`");
+            report.AppendLine("- target selector: `" + verification.TargetSelector + "`");
+            report.AppendLine("- source picture count: " + verification.SourcePictureCount.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- target picture count: " + verification.TargetPictureCountBefore.ToString(CultureInfo.InvariantCulture) + " -> " + verification.TargetPictureCountAfter.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- hash matched: " + BoolText(verification.HashMatched));
+            report.AppendLine("- target changed: " + BoolText(verification.TargetChanged));
+            report.AppendLine("- picture count preserved: " + BoolText(verification.PictureCountPreserved));
+            report.AppendLine();
+            report.AppendLine("| side | BinData | pixels | sha256 |");
+            report.AppendLine("| --- | --- | --- | --- |");
+            AppendCopyVerifyImageRow(report, "source", verification.SourceBinData, verification.SourcePixels, verification.SourceSha256);
+            AppendCopyVerifyImageRow(report, "target before", verification.TargetBeforeBinData, verification.TargetBeforePixels, verification.TargetBeforeSha256);
+            AppendCopyVerifyImageRow(report, "target after", verification.TargetAfterBinData, verification.TargetAfterPixels, verification.TargetAfterSha256);
+
             WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendComProcessDiagnostics(StringBuilder report, string before, string after, string newProcesses, string cleanupStatus)
+        {
+            report.AppendLine("## COM Process Diagnostics");
+            report.AppendLine();
+            report.AppendLine("| checkpoint | HWP processes |");
+            report.AppendLine("| --- | --- |");
+            report.AppendLine("| before | " + EscapeMarkdownTable(before) + " |");
+            report.AppendLine("| after | " + EscapeMarkdownTable(after) + " |");
+            report.AppendLine("| new after | " + EscapeMarkdownTable(newProcesses) + " |");
+            report.AppendLine();
+            report.AppendLine("- strict cleanup: " + cleanupStatus);
+        }
+
+        private static string FormatStrictCleanupStatus(bool strictCleanup, bool cleanupAvailable, bool cleanupPassed)
+        {
+            if (!strictCleanup)
+            {
+                return "not_requested";
+            }
+
+            if (!cleanupAvailable)
+            {
+                return "unavailable";
+            }
+
+            return cleanupPassed ? "passed" : "failed";
+        }
+
+        private static void AppendCopyVerifyImageRow(StringBuilder report, string side, string binData, string pixels, string sha256)
+        {
+            report.Append("| ");
+            report.Append(EscapeMarkdownTable(side));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(binData));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(pixels));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(sha256));
+            report.AppendLine(" |");
         }
 
         private static void AppendCopyReportRow(StringBuilder report, string step, bool ok, string note)
@@ -4457,6 +4857,51 @@ namespace OpenHwp.Automation.Cli
             }
         }
 
+        private sealed class CopyFromDocVerification
+        {
+            public string Verdict { get; set; }
+
+            public bool Required { get; set; }
+
+            public bool Verified { get; set; }
+
+            public string Note { get; set; }
+
+            public string SourceSelector { get; set; }
+
+            public string TargetSelector { get; set; }
+
+            public int SourcePictureCount { get; set; }
+
+            public int TargetPictureCountBefore { get; set; }
+
+            public int TargetPictureCountAfter { get; set; }
+
+            public string SourceBinData { get; set; }
+
+            public string TargetBeforeBinData { get; set; }
+
+            public string TargetAfterBinData { get; set; }
+
+            public string SourcePixels { get; set; }
+
+            public string TargetBeforePixels { get; set; }
+
+            public string TargetAfterPixels { get; set; }
+
+            public string SourceSha256 { get; set; }
+
+            public string TargetBeforeSha256 { get; set; }
+
+            public string TargetAfterSha256 { get; set; }
+
+            public bool HashMatched { get; set; }
+
+            public bool TargetChanged { get; set; }
+
+            public bool PictureCountPreserved { get; set; }
+        }
+
         private static void PrintUsage()
         {
             Console.WriteLine("OpenHwp.Automation.Cli");
@@ -4505,17 +4950,20 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  validate-layout <templateHwpxPath> <candidateHwpxPath> [reportMarkdownPath] [--allow-table-row-change indexes] [--allow-table-column-change indexes] [--max-leading-style-drift count]");
             Console.WriteLine("  validate-content <candidateHwpxPath> [reportMarkdownPath] [--require text]...");
             Console.WriteLine("  scan-hwpx-features <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  list-pictures <hwpxFileOrDirectory> [reportMarkdownPath]");
+            Console.WriteLine("  replace-image-control <inputHwpxPath> <outputHwpxPath> --target control:gso:<index>|picture:<index>|image:<binaryItemIDRef> --image imagePath [--report reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
-            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath]");
+            Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
+            Console.WriteLine("  [--visible] [--keep-open] copy-from-doc <sourcePath> <targetPath> <outputPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");
             Console.WriteLine("  [--visible] [--keep-open] replace-after-marker <inputPath> <markerText> <contentPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text <inputPath> <findText> <replaceText> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] replace-text-batch <inputPath> <outputPath> <findText1> <replaceText1> [<findText2> <replaceText2> ...]");
             Console.WriteLine("  demo-list");
             Console.WriteLine("  [--visible] [--keep-open] demo-feature <featureName> [key=value ...] [--open <path>] [--save <path>]");
+            Console.WriteLine("    insertPicture width/height are HWP COM sizing values; values above 1000 are rejected as likely HWPX hp:sz units.");
             Console.WriteLine("  [--visible] [--keep-open] run <command>");
             Console.WriteLine("  [--visible] [--keep-open] action <actionName> [key=value ...] [--open <path>] [--save <path>]");
         }

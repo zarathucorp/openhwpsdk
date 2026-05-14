@@ -2,6 +2,9 @@ bin/
 obj/
 .vs/
 artifacts/
+site/
+.codex-mkdocs-deps/
+mkdocs-serve*.log
 *.user
 *.suo
 *.cache
@@ -9,3 +12,4 @@ artifacts/
 *.log
 
 test/
+tools/
