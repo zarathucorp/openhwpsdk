@@ -83,6 +83,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible diag
 | Fill existing forms | `extract-form-map`, `probe-form-map`, `apply-form-map` | A template must keep its original table and section structure. |
 | Fill supported submission templates | `fill-submission-template` | A known profile can map Markdown content into an official HWPX form. |
 | Validate generated HWPX files | `validate-layout`, `validate-content` | You need evidence that the output did not corrupt layout or required content. |
+| Run visual smoke checks | `visual-smoke-corpus` | A fixture corpus should be scanned and exported to PDFs for review before the next change. |
 | Replace existing pictures | `list-pictures`, `replace-image-control` | The image binary should change while supported placement, wrap, size, crop, and anchor properties are preserved and verified. |
 | Edit package tables | `table-*-package` | A simple HWPX table can be edited without launching HWP COM. |
 | Copy rich editor content | `list-controls`, `probe-copy-from-doc`, `copy-from-doc` | The reference document already contains the formatting or object you need. |

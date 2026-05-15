@@ -83,6 +83,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible diag
 | 기존 양식 입력 | `extract-form-map`, `probe-form-map`, `apply-form-map` | 원본 표와 구역 구조를 유지해야 할 때 |
 | 지원 템플릿 입력 | `fill-submission-template` | 알려진 프로파일로 Markdown 내용을 공식 HWPX 양식에 넣을 때 |
 | 생성 파일 검증 | `validate-layout`, `validate-content` | 출력이 레이아웃이나 필수 내용을 훼손하지 않았는지 확인할 때 |
+| 시각 smoke 검증 | `visual-smoke-corpus` | 다음 변경으로 넘어가기 전에 fixture corpus를 scan하고 PDF로 export해 검토해야 할 때 |
 | 기존 그림 교체 | `list-pictures`, `replace-image-control` | 지원되는 위치, 줄바꿈, 크기, 자르기, 고정점 속성 보존을 검증하면서 이미지만 바꿀 때 |
 | 패키지 표 편집 | `table-*-package` | 한글 COM 없이 단순 HWPX 표를 편집할 때 |
 | 편집기 기반 복사/붙여넣기 | `list-controls`, `probe-copy-from-doc`, `copy-from-doc` | 참조 문서의 서식이나 개체를 그대로 활용해야 할 때 |

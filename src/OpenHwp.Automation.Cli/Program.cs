@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using OpenHwp.Automation;
 
 namespace OpenHwp.Automation.Cli
@@ -94,6 +96,8 @@ namespace OpenHwp.Automation.Cli
                     return CopySave(commandArgs, visible, keepOpen);
                 case "export-pdf":
                     return ExportPdf(commandArgs, visible, keepOpen);
+                case "visual-smoke-corpus":
+                    return VisualSmokeCorpus(commandArgs, visible, keepOpen);
                 case "doc-info":
                     return DocInfo(commandArgs, visible, keepOpen);
                 case "read-text":
@@ -340,6 +344,199 @@ namespace OpenHwp.Automation.Cli
             }
 
             Console.WriteLine(args[2]);
+            return 0;
+        }
+
+        private static int VisualSmokeCorpus(string[] args, bool visible, bool keepOpen)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: visual-smoke-corpus <hwpxFileOrDirectory> <outputDirectory> [reportMarkdownPath] [--scan-report reportMarkdownPath] [--max-files count] [--expect-export-failure fileNameOrPath=exitCode[:reasonFragment][;...]] [--strict-cleanup] [--cleanup-wait-ms ms]");
+                return 1;
+            }
+
+            var inputPath = args[1];
+            var outputDirectory = Path.GetFullPath(args[2]);
+            string reportPath = null;
+            string scanReportPath = null;
+            var maxFiles = 0;
+            var strictCleanup = false;
+            var cleanupWaitMs = 5000;
+            var expectedExportFailures = new List<VisualSmokeExpectedFailure>();
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--scan-report", StringComparison.OrdinalIgnoreCase))
+                {
+                    scanReportPath = RequireValue(args, ref index, "--scan-report");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--max-files", StringComparison.OrdinalIgnoreCase))
+                {
+                    maxFiles = ParseIntArgument(RequireValue(args, ref index, "--max-files"), "max-files");
+                    if (maxFiles <= 0)
+                    {
+                        Console.Error.WriteLine("--max-files must be greater than zero.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--expect-export-failure", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddVisualSmokeExpectedFailures(expectedExportFailures, RequireValue(args, ref index, "--expect-export-failure"));
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--cleanup-wait-ms", StringComparison.OrdinalIgnoreCase))
+                {
+                    cleanupWaitMs = ParseIntArgument(RequireValue(args, ref index, "--cleanup-wait-ms"), "cleanup-wait-ms");
+                    if (cleanupWaitMs < 0)
+                    {
+                        Console.Error.WriteLine("--cleanup-wait-ms must be zero or greater.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--strict-cleanup", StringComparison.OrdinalIgnoreCase))
+                {
+                    strictCleanup = true;
+                    continue;
+                }
+
+                if (reportPath == null)
+                {
+                    reportPath = args[index];
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            Directory.CreateDirectory(outputDirectory);
+            if (string.IsNullOrWhiteSpace(reportPath))
+            {
+                reportPath = Path.Combine(outputDirectory, "visual-smoke-report.md");
+            }
+
+            if (string.IsNullOrWhiteSpace(scanReportPath))
+            {
+                scanReportPath = Path.Combine(outputDirectory, "feature-scan.md");
+            }
+
+            var pdfDirectory = Path.Combine(outputDirectory, "pdf");
+            Directory.CreateDirectory(pdfDirectory);
+
+            var files = ResolveVisualSmokeFiles(inputPath);
+            if (maxFiles > 0)
+            {
+                files = files.Take(maxFiles).ToList();
+            }
+
+            var scanSummary = BuildVisualSmokeScanSummary(inputPath, files);
+            HwpxFeatureScanner.WriteMarkdown(scanSummary, scanReportPath);
+
+            var processSnapshotBefore = ComOperationWatchdog.SnapshotHwpProcesses();
+            var results = new List<VisualSmokeResult>();
+            for (var index = 0; index < files.Count; index++)
+            {
+                var result = new VisualSmokeResult
+                {
+                    InputPath = files[index],
+                    PdfPath = GetVisualSmokePdfPath(pdfDirectory, index + 1, files[index]),
+                    ExpectedFailure = MatchExpectedVisualSmokeFailure(files[index], expectedExportFailures)
+                };
+                result.ExpectedFailureMatched = result.ExpectedFailure != null;
+
+                try
+                {
+                    if (File.Exists(result.PdfPath))
+                    {
+                        File.Delete(result.PdfPath);
+                    }
+
+                    string standardOutput;
+                    string standardError;
+                    result.ExitCode = RunVisualSmokePdfExport(result.InputPath, result.PdfPath, visible, keepOpen, out standardOutput, out standardError);
+                    var pdfInfo = new FileInfo(result.PdfPath);
+                    result.PdfExists = pdfInfo.Exists;
+                    result.PdfBytes = pdfInfo.Exists ? pdfInfo.Length : 0L;
+                    result.Status = result.ExitCode == 0 && result.PdfExists && result.PdfBytes > 0 ? "exported" : "failed";
+                    result.Note = result.Status == "exported"
+                        ? "ok"
+                        : BuildVisualSmokeFailureNote(result.ExitCode, standardOutput, standardError, result.PdfExists, result.PdfBytes);
+                    ApplyVisualSmokeExpectedFailureStatus(result);
+
+                    if (result.ExitCode == 124)
+                    {
+                        results.Add(result);
+                        AddSkippedVisualSmokeResults(results, files, pdfDirectory, index + 1, expectedExportFailures, "previous export timed out");
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Status = "failed";
+                    result.ExitCode = -1;
+                    result.Note = ex.GetType().Name + ": " + ex.Message;
+                    ApplyVisualSmokeExpectedFailureStatus(result);
+                }
+
+                results.Add(result);
+            }
+
+            var processSnapshotAfter = SnapshotHwpProcessesAfterCleanup(processSnapshotBefore, strictCleanup, cleanupWaitMs);
+            var newProcesses = ComOperationWatchdog.FindNewHwpProcesses(processSnapshotBefore, processSnapshotAfter);
+            var cleanupAvailable = ComOperationWatchdog.IsSnapshotAvailable(processSnapshotBefore) && ComOperationWatchdog.IsSnapshotAvailable(processSnapshotAfter);
+            var cleanupPassed = cleanupAvailable && newProcesses.Count == 0;
+            var cleanupStatus = FormatStrictCleanupStatus(strictCleanup, cleanupAvailable, cleanupPassed);
+
+            WriteVisualSmokeReport(
+                inputPath,
+                outputDirectory,
+                pdfDirectory,
+                reportPath,
+                scanReportPath,
+                scanSummary,
+                results,
+                ComOperationWatchdog.DescribeHwpProcesses(processSnapshotBefore),
+                ComOperationWatchdog.DescribeHwpProcesses(processSnapshotAfter),
+                ComOperationWatchdog.DescribeHwpProcesses(newProcesses),
+                cleanupStatus,
+                expectedExportFailures);
+
+            var exported = results.Count(item => string.Equals(item.Status, "exported", StringComparison.OrdinalIgnoreCase));
+            var expectedFailures = results.Count(IsExpectedVisualSmokeFailureResult);
+            var unmatchedExpectedFailures = expectedExportFailures.Count(item => !item.Matched);
+            var unexpectedFailures = results.Count(IsUnexpectedVisualSmokeFailureResult) + unmatchedExpectedFailures;
+            var failed = expectedFailures + unexpectedFailures;
+            Console.WriteLine("input=" + Path.GetFullPath(inputPath));
+            Console.WriteLine("files=" + results.Count.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("exported=" + exported.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("failed=" + failed.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("expected_failures=" + expectedFailures.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("unexpected_failures=" + unexpectedFailures.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("unmatched_expected_failures=" + unmatchedExpectedFailures.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("scan_package_errors=" + scanSummary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("scan_xml_parse_errors=" + scanSummary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("strict_cleanup=" + cleanupStatus);
+            Console.WriteLine("scan_report=" + scanReportPath);
+            Console.WriteLine("report=" + reportPath);
+
+            if (results.Count == 0 ||
+                unexpectedFailures > 0 ||
+                scanSummary.PackageErrors > 0 ||
+                scanSummary.XmlParseErrors > 0 ||
+                (strictCleanup && !cleanupPassed))
+            {
+                return 2;
+            }
+
             return 0;
         }
 
@@ -2839,6 +3036,438 @@ namespace OpenHwp.Automation.Cli
             return summary.PackageErrors == 0 && summary.XmlParseErrors == 0 ? 0 : 2;
         }
 
+        private static List<string> ResolveVisualSmokeFiles(string inputPath)
+        {
+            var fullPath = Path.GetFullPath(inputPath);
+            if (File.Exists(fullPath))
+            {
+                if (!fullPath.EndsWith(".hwpx", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArgumentException("Input file must be .hwpx: " + fullPath);
+                }
+
+                return new List<string> { fullPath };
+            }
+
+            if (!Directory.Exists(fullPath))
+            {
+                throw new FileNotFoundException("Input path was not found.", fullPath);
+            }
+
+            return Directory.GetFiles(fullPath, "*.hwpx", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static HwpxFeatureScanner.ScanSummary BuildVisualSmokeScanSummary(string inputPath, IEnumerable<string> files)
+        {
+            var summary = new HwpxFeatureScanner.ScanSummary(Path.GetFullPath(inputPath));
+            foreach (var file in files ?? new string[0])
+            {
+                var fileSummary = HwpxFeatureScanner.Scan(file);
+                foreach (var result in fileSummary.Files)
+                {
+                    summary.Files.Add(result);
+                    summary.Add(result);
+                }
+            }
+
+            return summary;
+        }
+
+        private static void AddVisualSmokeExpectedFailures(IList<VisualSmokeExpectedFailure> expectedFailures, string raw)
+        {
+            foreach (var item in (raw ?? string.Empty).Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = item.Trim();
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
+
+                var separator = trimmed.IndexOf('=');
+                if (separator <= 0 || separator >= trimmed.Length - 1)
+                {
+                    throw new ArgumentException("--expect-export-failure entries must use fileNameOrPath=exitCode[:reasonFragment].");
+                }
+
+                var selector = trimmed.Substring(0, separator).Trim();
+                var contract = trimmed.Substring(separator + 1).Trim();
+                var reasonSeparator = contract.IndexOf(':');
+                var exitCodeText = reasonSeparator >= 0 ? contract.Substring(0, reasonSeparator).Trim() : contract;
+                var reasonFragment = reasonSeparator >= 0 ? contract.Substring(reasonSeparator + 1).Trim() : string.Empty;
+                int exitCode;
+                if (selector.Length == 0 || !int.TryParse(exitCodeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out exitCode))
+                {
+                    throw new ArgumentException("--expect-export-failure entries must include an integer exit code.");
+                }
+
+                expectedFailures.Add(new VisualSmokeExpectedFailure(selector, exitCode, reasonFragment));
+            }
+        }
+
+        private static VisualSmokeExpectedFailure MatchExpectedVisualSmokeFailure(string inputPath, IEnumerable<VisualSmokeExpectedFailure> expectedFailures)
+        {
+            foreach (var expectedFailure in expectedFailures ?? new VisualSmokeExpectedFailure[0])
+            {
+                if (expectedFailure.Matches(inputPath))
+                {
+                    expectedFailure.Matched = true;
+                    return expectedFailure;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsExpectedVisualSmokeFailureResult(VisualSmokeResult result)
+        {
+            return result != null &&
+                   string.Equals(result.Status, "expected-failure", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsUnexpectedVisualSmokeFailureResult(VisualSmokeResult result)
+        {
+            return result != null &&
+                   !string.Equals(result.Status, "exported", StringComparison.OrdinalIgnoreCase) &&
+                   !string.Equals(result.Status, "expected-failure", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ApplyVisualSmokeExpectedFailureStatus(VisualSmokeResult result)
+        {
+            if (result == null || result.ExpectedFailure == null)
+            {
+                return;
+            }
+
+            if (string.Equals(result.Status, "exported", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Status = "unexpected-pass";
+                result.Note = "expected export failure but PDF was exported";
+                return;
+            }
+
+            if (result.ExpectedFailure.IsSatisfiedBy(result.ExitCode, result.Note))
+            {
+                result.Status = "expected-failure";
+                return;
+            }
+
+            result.Status = "expected-mismatch";
+            result.Note = "expected " + result.ExpectedFailure.ContractDescription + "; actual " + result.Note;
+        }
+
+        private static int RunVisualSmokePdfExport(string inputPath, string pdfPath, bool visible, bool keepOpen, out string standardOutput, out string standardError)
+        {
+            var arguments = new List<string>();
+            if (visible)
+            {
+                arguments.Add("--visible");
+            }
+
+            if (keepOpen)
+            {
+                arguments.Add("--keep-open");
+            }
+
+            if (_comTimeoutMs > 0)
+            {
+                arguments.Add("--com-timeout-ms");
+                arguments.Add(_comTimeoutMs.ToString(CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                arguments.Add("--no-com-timeout");
+            }
+
+            arguments.Add("export-pdf");
+            arguments.Add(inputPath);
+            arguments.Add(pdfPath);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = System.Reflection.Assembly.GetExecutingAssembly().Location,
+                Arguments = string.Join(" ", arguments.Select(QuoteCommandLineArgument).ToArray()),
+                CreateNoWindow = !visible,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            using (var process = Process.Start(startInfo))
+            {
+                if (process == null)
+                {
+                    standardOutput = string.Empty;
+                    standardError = "Failed to start child export process.";
+                    return 125;
+                }
+
+                var output = new StringBuilder();
+                var error = new StringBuilder();
+                process.OutputDataReceived += (sender, eventArgs) =>
+                {
+                    if (eventArgs.Data != null)
+                    {
+                        output.AppendLine(eventArgs.Data);
+                    }
+                };
+                process.ErrorDataReceived += (sender, eventArgs) =>
+                {
+                    if (eventArgs.Data != null)
+                    {
+                        error.AppendLine(eventArgs.Data);
+                    }
+                };
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                var childTimeoutMs = GetVisualSmokeChildTimeoutMs();
+                if (!process.WaitForExit(childTimeoutMs))
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                        // Best-effort cleanup; the process may already be exiting.
+                    }
+
+                    process.WaitForExit();
+                    standardOutput = output.ToString();
+                    standardError = error.ToString() + "visual-smoke child export timed out after " + childTimeoutMs.ToString(CultureInfo.InvariantCulture) + " ms.";
+                    return 124;
+                }
+
+                process.WaitForExit();
+                standardOutput = output.ToString();
+                standardError = error.ToString();
+                return process.ExitCode;
+            }
+        }
+
+        private static int GetVisualSmokeChildTimeoutMs()
+        {
+            if (_comTimeoutMs > 0)
+            {
+                return Math.Max(_comTimeoutMs + 15000, 30000);
+            }
+
+            return 300000;
+        }
+
+        private static IList<ComOperationWatchdog.HwpProcessInfo> SnapshotHwpProcessesAfterCleanup(
+            IList<ComOperationWatchdog.HwpProcessInfo> before,
+            bool strictCleanup,
+            int cleanupWaitMs)
+        {
+            var after = ComOperationWatchdog.SnapshotHwpProcesses();
+            if (!strictCleanup || cleanupWaitMs <= 0)
+            {
+                return after;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            while (ComOperationWatchdog.FindNewHwpProcesses(before, after).Count > 0 && stopwatch.ElapsedMilliseconds < cleanupWaitMs)
+            {
+                Thread.Sleep(250);
+                after = ComOperationWatchdog.SnapshotHwpProcesses();
+            }
+
+            return after;
+        }
+
+        private static string QuoteCommandLineArgument(string value)
+        {
+            if (value == null)
+            {
+                return "\"\"";
+            }
+
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static string BuildVisualSmokeFailureNote(int exitCode, string standardOutput, string standardError, bool pdfExists, long pdfBytes)
+        {
+            var details = (standardError ?? string.Empty).Trim();
+            if (details.Length == 0)
+            {
+                details = (standardOutput ?? string.Empty).Trim();
+            }
+
+            if (details.Length == 0 && (!pdfExists || pdfBytes <= 0))
+            {
+                details = "PDF was not created or is empty";
+            }
+
+            return "exit=" + exitCode.ToString(CultureInfo.InvariantCulture) + "; " + Abbreviate(details, 240);
+        }
+
+        private static void AddSkippedVisualSmokeResults(IList<VisualSmokeResult> results, IList<string> files, string pdfDirectory, int startIndex, IEnumerable<VisualSmokeExpectedFailure> expectedFailures, string note)
+        {
+            for (var index = startIndex; index < files.Count; index++)
+            {
+                var expectedFailure = MatchExpectedVisualSmokeFailure(files[index], expectedFailures);
+                results.Add(new VisualSmokeResult
+                {
+                    InputPath = files[index],
+                    PdfPath = GetVisualSmokePdfPath(pdfDirectory, index + 1, files[index]),
+                    Status = expectedFailure == null ? "skipped" : "expected-not-run",
+                    ExitCode = -1,
+                    ExpectedFailure = expectedFailure,
+                    ExpectedFailureMatched = expectedFailure != null,
+                    Note = note
+                });
+            }
+        }
+
+        private static string GetVisualSmokePdfPath(string pdfDirectory, int number, string inputPath)
+        {
+            var name = Path.GetFileNameWithoutExtension(inputPath);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = "document";
+            }
+
+            return Path.Combine(
+                pdfDirectory,
+                number.ToString("0000", CultureInfo.InvariantCulture) + "-" + ToSafeFileName(name) + ".pdf");
+        }
+
+        private static string ToSafeFileName(string value)
+        {
+            var invalid = new HashSet<char>(Path.GetInvalidFileNameChars());
+            var builder = new StringBuilder();
+            foreach (var ch in value ?? string.Empty)
+            {
+                builder.Append(invalid.Contains(ch) ? '_' : ch);
+            }
+
+            return builder.Length == 0 ? "document" : builder.ToString();
+        }
+
+        private static void WriteVisualSmokeReport(
+            string inputPath,
+            string outputDirectory,
+            string pdfDirectory,
+            string reportPath,
+            string scanReportPath,
+            HwpxFeatureScanner.ScanSummary scanSummary,
+            IList<VisualSmokeResult> results,
+            string hwpProcessesBefore,
+            string hwpProcessesAfter,
+            string newHwpProcesses,
+            string cleanupStatus,
+            IList<VisualSmokeExpectedFailure> expectedExportFailures)
+        {
+            var exported = results.Count(item => string.Equals(item.Status, "exported", StringComparison.OrdinalIgnoreCase));
+            var expectedFailures = results.Count(IsExpectedVisualSmokeFailureResult);
+            var unmatchedExpectedFailures = (expectedExportFailures ?? new VisualSmokeExpectedFailure[0]).Count(item => !item.Matched);
+            var unexpectedFailures = results.Count(IsUnexpectedVisualSmokeFailureResult) + unmatchedExpectedFailures;
+            var failed = expectedFailures + unexpectedFailures;
+            var report = new StringBuilder();
+            report.AppendLine("# HWPX PDF Visual Smoke");
+            report.AppendLine();
+            report.AppendLine("- input: " + Path.GetFullPath(inputPath));
+            report.AppendLine("- output directory: " + Path.GetFullPath(outputDirectory));
+            report.AppendLine("- pdf directory: " + Path.GetFullPath(pdfDirectory));
+            report.AppendLine("- scan report: " + Path.GetFullPath(scanReportPath));
+            report.AppendLine("- files selected for PDF export: " + results.Count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- exported: " + exported.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- failed: " + failed.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- expected failures: " + expectedFailures.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- unexpected failures: " + unexpectedFailures.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- unmatched expected failures: " + unmatchedExpectedFailures.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- scan package errors: " + scanSummary.PackageErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- scan XML parse errors: " + scanSummary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine();
+            report.AppendLine("## COM Process Diagnostics");
+            report.AppendLine();
+            report.AppendLine("| checkpoint | HWP processes |");
+            report.AppendLine("| --- | --- |");
+            report.AppendLine("| before | " + EscapeMarkdownTable(hwpProcessesBefore) + " |");
+            report.AppendLine("| after | " + EscapeMarkdownTable(hwpProcessesAfter) + " |");
+            report.AppendLine("| new after | " + EscapeMarkdownTable(newHwpProcesses) + " |");
+            report.AppendLine();
+            report.AppendLine("- strict cleanup: " + cleanupStatus);
+            report.AppendLine();
+            report.AppendLine("## Scan Summary");
+            report.AppendLine();
+            report.AppendLine("| signal | count |");
+            report.AppendLine("| --- | ---: |");
+            AppendVisualSmokeScanRow(report, "files", scanSummary.Files.Count);
+            AppendVisualSmokeScanRow(report, "tables", scanSummary.Count("tables"));
+            AppendVisualSmokeScanRow(report, "pictures", scanSummary.Count("pictures"));
+            AppendVisualSmokeScanRow(report, "drawing_shapes", scanSummary.Count("drawingShapes"));
+            AppendVisualSmokeScanRow(report, "fields_forms", scanSummary.Count("fields") + scanSummary.Count("fieldBegins") + scanSummary.Count("pressFields") + scanSummary.Count("formObjects"));
+            AppendVisualSmokeScanRow(report, "headers_footers", scanSummary.Count("pageHeaders") + scanSummary.Count("pageFooters") + scanSummary.Count("pageHeaderReferences") + scanSummary.Count("pageFooterReferences"));
+            AppendVisualSmokeScanRow(report, "notes", scanSummary.Count("footnotes") + scanSummary.Count("endnotes") + scanSummary.Count("memos") + scanSummary.Count("comments"));
+            AppendVisualSmokeScanRow(report, "references", scanSummary.Count("captions") + scanSummary.Count("bookmarks") + scanSummary.Count("crossReferences") + scanSummary.Count("hyperlinks") + scanSummary.Count("tocMarkers") + scanSummary.Count("indexMarkers") + scanSummary.Count("autoNumbers") + scanSummary.Count("pageNumbers"));
+            AppendVisualSmokeScanRow(report, "embedded_objects", scanSummary.Count("equations") + scanSummary.Count("charts") + scanSummary.Count("oleObjects") + scanSummary.Count("videos") + scanSummary.Count("sounds"));
+            report.AppendLine();
+            report.AppendLine("## PDF Exports");
+            report.AppendLine();
+            report.AppendLine("| file | status | expected | expected exit | expected reason | exit | pdf | bytes | note |");
+            report.AppendLine("| --- | --- | --- | ---: | --- | ---: | --- | ---: | --- |");
+            foreach (var result in results)
+            {
+                report.Append("| ");
+                report.Append(EscapeMarkdownTable(Path.GetFileName(result.InputPath)));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(result.Status));
+                report.Append(" | ");
+                report.Append(BoolText(result.ExpectedFailureMatched));
+                report.Append(" | ");
+                report.Append(result.ExpectedFailure == null ? string.Empty : result.ExpectedFailure.ExpectedExitCode.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(result.ExpectedFailure == null ? string.Empty : result.ExpectedFailure.ExpectedReasonFragment));
+                report.Append(" | ");
+                report.Append(result.ExitCode.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(result.PdfPath));
+                report.Append(" | ");
+                report.Append(result.PdfBytes.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(result.Note));
+                report.AppendLine(" |");
+            }
+
+            if (expectedExportFailures != null && expectedExportFailures.Count > 0)
+            {
+                report.AppendLine();
+                report.AppendLine("## Expected Failure Contracts");
+                report.AppendLine();
+                report.AppendLine("| selector | exit | reason fragment | matched |");
+                report.AppendLine("| --- | ---: | --- | --- |");
+                foreach (var expectedFailure in expectedExportFailures)
+                {
+                    report.Append("| ");
+                    report.Append(EscapeMarkdownTable(expectedFailure.Selector));
+                    report.Append(" | ");
+                    report.Append(expectedFailure.ExpectedExitCode.ToString(CultureInfo.InvariantCulture));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(expectedFailure.ExpectedReasonFragment));
+                    report.Append(" | ");
+                    report.Append(BoolText(expectedFailure.Matched));
+                    report.AppendLine(" |");
+                }
+            }
+
+            report.AppendLine();
+            report.AppendLine("This smoke verifies package scan health and HWP PDF export success. It does not replace human visual review of the generated PDFs.");
+            WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendVisualSmokeScanRow(StringBuilder report, string signal, int count)
+        {
+            report.Append("| ");
+            report.Append(signal);
+            report.Append(" | ");
+            report.Append(count.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine(" |");
+        }
+
         private static int ReplaceImageControl(string[] args)
         {
             if (args.Length < 3)
@@ -4902,6 +5531,79 @@ namespace OpenHwp.Automation.Cli
             public bool PictureCountPreserved { get; set; }
         }
 
+        private sealed class VisualSmokeResult
+        {
+            public string InputPath { get; set; }
+
+            public string PdfPath { get; set; }
+
+            public string Status { get; set; }
+
+            public int ExitCode { get; set; }
+
+            public VisualSmokeExpectedFailure ExpectedFailure { get; set; }
+
+            public bool ExpectedFailureMatched { get; set; }
+
+            public bool PdfExists { get; set; }
+
+            public long PdfBytes { get; set; }
+
+            public string Note { get; set; }
+        }
+
+        private sealed class VisualSmokeExpectedFailure
+        {
+            private readonly HashSet<string> _keys;
+
+            public VisualSmokeExpectedFailure(string selector, int expectedExitCode, string expectedReasonFragment)
+            {
+                Selector = selector ?? string.Empty;
+                ExpectedExitCode = expectedExitCode;
+                ExpectedReasonFragment = expectedReasonFragment ?? string.Empty;
+                _keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Selector };
+                if (Selector.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0)
+                {
+                    _keys.Add(Path.GetFullPath(Selector));
+                }
+            }
+
+            public string Selector { get; private set; }
+
+            public int ExpectedExitCode { get; private set; }
+
+            public string ExpectedReasonFragment { get; private set; }
+
+            public bool Matched { get; set; }
+
+            public string ContractDescription
+            {
+                get
+                {
+                    return "exit=" + ExpectedExitCode.ToString(CultureInfo.InvariantCulture) +
+                           (ExpectedReasonFragment.Length == 0 ? string.Empty : "; reason contains '" + ExpectedReasonFragment + "'");
+                }
+            }
+
+            public bool Matches(string inputPath)
+            {
+                return _keys.Contains(inputPath) ||
+                       _keys.Contains(Path.GetFullPath(inputPath)) ||
+                       _keys.Contains(Path.GetFileName(inputPath));
+            }
+
+            public bool IsSatisfiedBy(int exitCode, string note)
+            {
+                if (exitCode != ExpectedExitCode)
+                {
+                    return false;
+                }
+
+                return ExpectedReasonFragment.Length == 0 ||
+                       (note ?? string.Empty).IndexOf(ExpectedReasonFragment, StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+        }
+
         private static void PrintUsage()
         {
             Console.WriteLine("OpenHwp.Automation.Cli");
@@ -4910,6 +5612,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  [--visible] [--keep-open] new-text <outputPath> <text>");
             Console.WriteLine("  [--visible] [--keep-open] copy-save <inputPath> <outputPath>");
             Console.WriteLine("  [--visible] [--keep-open] export-pdf <inputPath> <outputPdfPath>");
+            Console.WriteLine("  [--visible] [--keep-open] visual-smoke-corpus <hwpxFileOrDirectory> <outputDirectory> [reportMarkdownPath] [--scan-report reportMarkdownPath] [--max-files count] [--expect-export-failure fileNameOrPath=exitCode[:reasonFragment][;...]] [--strict-cleanup] [--cleanup-wait-ms ms]");
             Console.WriteLine("  [--visible] [--keep-open] doc-info <inputPath>");
             Console.WriteLine("  [--visible] [--keep-open] read-text <inputPath> [outputPath]");
             Console.WriteLine("  [--visible] [--keep-open] read-page <inputPath> <pageNumber> [outputPath]");

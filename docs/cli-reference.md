@@ -60,6 +60,15 @@ Use `--markdown-table-mode text` only when preserving the original HWPX table co
 
 `validate-layout` classifies findings as `expected-change`, `review-needed`, or `blocking`. Treat `review-needed` as a human review request, not as a clean pass.
 
+## Visual Smoke
+
+```powershell
+& $cli --visible visual-smoke-corpus C:\temp\hwpx-corpus C:\temp\visual-smoke C:\temp\visual-smoke\visual-smoke-report.md
+& $cli --visible visual-smoke-corpus C:\temp\hwpx-corpus C:\temp\visual-smoke C:\temp\visual-smoke\visual-smoke-report.md --expect-export-failure "known-nonrenderable.hwpx=1:Failed to open" --strict-cleanup
+```
+
+This runs a feature scan for the HWPX input, exports the selected files to PDFs under the output directory, and writes one Markdown report that links the scan report, PDF paths, export byte sizes, child export exit codes, and HWP process diagnostics. Use `--expect-export-failure` only for known inventory-only or non-renderable fixtures, and provide an exact contract in `fileNameOrPath=exitCode[:reasonFragment]` form. An expected failure that exports successfully, fails with a different exit code, fails with a different reason, or never runs still fails the smoke command. `--strict-cleanup` waits briefly for child HWP processes to exit before checking for newly remaining processes. It verifies scan/export health; still review the generated PDFs before accepting a visual change.
+
 ## Feature Inventory
 
 ```powershell
