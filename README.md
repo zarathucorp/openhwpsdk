@@ -98,6 +98,7 @@ The full documentation site is published with GitHub Pages:
 - [CLI reference](https://zarathucorp.github.io/openhwpsdk/cli-reference/)
 - [HWPX validation workflow](https://zarathucorp.github.io/openhwpsdk/markdown-hwpx-validation-workflow/)
 - [Image replacement workflow](https://zarathucorp.github.io/openhwpsdk/image-replacement/)
+- [SDK parity matrix](https://zarathucorp.github.io/openhwpsdk/sdk-parity-matrix/)
 - [Roadmap and feature coverage](https://zarathucorp.github.io/openhwpsdk/hwp-authoring-feature-roadmap/)
 
 To preview the documentation locally:

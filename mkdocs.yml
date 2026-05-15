@@ -53,6 +53,7 @@ nav:
       - HWPX Validation: markdown-hwpx-validation-workflow.md
       - Image Replacement: image-replacement.md
   - Project:
+      - SDK Parity Matrix: sdk-parity-matrix.md
       - Scope and Roadmap: hwp-authoring-feature-roadmap.md
       - Implementation Notes: submission-hwpx-code-issues.md
       - Table Editing Design Note: table-edit-improvement-plan.md

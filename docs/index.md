@@ -47,6 +47,7 @@ OpenHwp Automation focuses on real document operations that need evidence after 
 | Existing form filling | [HWPX validation workflow](markdown-hwpx-validation-workflow.md) | Uses form maps, probes, reports, and validators. |
 | Image replacement | [Image replacement](image-replacement.md) | Preserves object geometry and wrapping when replacing image binaries. |
 | Command details | [CLI reference](cli-reference.md) | Short examples for the public command surface. |
+| SDK parity | [SDK parity matrix](sdk-parity-matrix.md) | Maps Hancom SDK capability areas to supported, inventory-only, unsupported, and needs-SDK states. |
 | Current boundaries | [Roadmap](hwp-authoring-feature-roadmap.md) | Tracks strong areas, gaps, and next implementation candidates. |
 
 ## Requirements

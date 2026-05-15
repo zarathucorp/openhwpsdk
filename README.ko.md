@@ -98,6 +98,7 @@ src\OpenHwp.Automation.Cli\bin\Release\OpenHwp.Automation.Cli.exe --visible diag
 - [CLI 레퍼런스](https://zarathucorp.github.io/openhwpsdk/cli-reference/)
 - [HWPX 검증 워크플로](https://zarathucorp.github.io/openhwpsdk/markdown-hwpx-validation-workflow/)
 - [이미지 교체 워크플로](https://zarathucorp.github.io/openhwpsdk/image-replacement/)
+- [SDK 지원 범위 매트릭스](https://zarathucorp.github.io/openhwpsdk/sdk-parity-matrix/)
 - [로드맵과 기능 범위](https://zarathucorp.github.io/openhwpsdk/hwp-authoring-feature-roadmap/)
 
 문서 사이트를 로컬에서 미리 보려면 다음을 실행합니다.

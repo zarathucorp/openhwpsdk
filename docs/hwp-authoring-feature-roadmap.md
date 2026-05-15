@@ -558,9 +558,16 @@
 
 ### Phase 11. SDK parity backlog
 
-목표: 공식 한글 SDK가 제품 범주로 내세우지만 현재 CLI가 직접 지원하지 않는 기능을 명시적으로 추적하고, 가능한 것은 HWP COM/패키지 래퍼로, 별도 SDK가 필요한 것은 unsupported 상태로 구분한다.
+목표: 공식 한글 SDK가 제품 범주로 내세우지만 현재 CLI가 직접 지원하지 않는 기능을 명시적으로 추적하고, 가능한 것은 HWP COM/패키지 래퍼로, 별도 SDK가 필요한 것은 unsupported 상태로 구분한다. 공개 추적 표는 [SDK parity matrix](sdk-parity-matrix.md)에 둔다.
 
 개발 단위:
+
+0. official SDK gap ledger
+   - 문서 보안: 문서 비밀번호, 배포용/읽기전용 문서 제한, 개인정보 텍스트 암호화가 현재 이름 있는 CLI command와 검증 fixture로 지원되지 않음을 추적한다.
+   - 문서 비교/병합/이력 관리: 표 셀 병합과 구분되는 문서 단위 compare/merge/history 기능이 현재 없으며, 별도 Hancom Docs Compare SDK가 필요한 영역과 HWP COM/패키지 기반 report로 가능한 최소 범위를 분리한다.
+   - 일반 HWP authoring: 캡션, 책갈피, 상호 참조, 차례/색인, 각주/미주/메모, 도형/글상자/글맵시, 수식, 차트/OLE/동영상/소리는 inventory/보존/COM 삽입/패키지 작성 단계를 각각 별도 상태로 둔다.
+   - page/section layout: 용지, 여백, 방향, 단, 구역 나누기, 구역별 쪽 번호 정책은 현재 일반 writer가 없으므로 inventory, COM smoke, package writer 가능성을 순서대로 검증한다.
+   - form control completeness: press field와 checkbox 일부 write를 기준선으로 삼고, radio/combo/edit/button은 control type별 값 의미와 전후 검증 contract가 생기기 전까지 unsupported 또는 skipped_unsafe로 둔다.
 
 1. SDK parity matrix
    - 공식 한글 SDK 범주를 `view/create/open/save/convert/extract-edit/security/compare-merge-history`로 나눈다.
@@ -592,6 +599,7 @@
 합격 기준:
 
 - `docs/hwp-authoring-feature-roadmap.md` 또는 별도 parity report에서 공식 SDK 범주별 current support/gap/verification command가 한눈에 보인다.
+- 위 `official SDK gap ledger`의 각 항목이 `unsupported`, `inventory-only`, `COM-smoke`, `package-writer`, `verified` 중 하나의 상태를 가진다.
 - 보안/비교/병합/변환 기능은 실제 HWP/SDK에서 열리는 fixture와 output-only smoke test 없이는 implemented로 표시하지 않는다.
 - 별도 Hancom SDK가 필요한 기능은 repo 내부 구현 예정 항목과 외부 라이선스/SDK 의존 항목으로 분리한다.
 - 변환/비교/보안 결과물은 원본 파일을 보존하고, 실패 시 partial output을 명시적으로 report한다.
@@ -616,7 +624,8 @@
 14. Phase 7: equation inventory와 COM insert.
 15. Phase 8: chart/OLE/media preservation.
 16. Phase 9: 일반 Markdown-to-HWP renderer.
-17. Phase 11 일부: SDK parity matrix, PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정.
+17. Phase 11 일부: official SDK gap ledger와 SDK parity matrix를 먼저 작성해 문서 보안, 문서 비교/병합/이력, 일반 authoring, page/section layout, form control completeness의 현재 상태를 고정한다.
+18. Phase 11 일부: PDF 외 변환 가능성 조사, 보안/비교/병합 unsupported 범위 확정, 별도 Hancom SDK 의존 항목 분리.
 
 ## 바로 다음 커밋 후보
 
@@ -671,6 +680,8 @@
 
 ### 후보 F: PDF visual smoke harness
 
+상태: 구현 1차. `visual-smoke-corpus` 명령으로 feature corpus scan report와 PDF export 결과를 한 report 묶음으로 남긴다. HWP COM이 건강한 환경에서 PDF가 실제 생성돼야 pass이며, known failure는 `fileNameOrPath=exitCode[:reasonFragment]` exact xfail contract로만 허용한다. PNG render, page thumbnails, visual metrics는 아직 다음 개발 단위다.
+
 - 로컬 feature fixture corpus의 대표 fixture를 PDF로 export하는 smoke command 정리.
 - scan report와 PDF export 결과를 같은 report 묶음으로 남긴다.
 - HWP COM이 불안정하면 `diagnose-com`과 visible export를 우선 실행한다.
@@ -695,9 +706,13 @@
 
 ### 후보 I: SDK parity matrix
 
+상태: 구현 1차. [SDK parity matrix](sdk-parity-matrix.md)에서 공식 Hwp SDK 범주를 현재 CLI command, 검증 command, 남은 gap, `unsupported`/`needs-SDK` 상태로 매핑한다.
+
 - 공식 한글 SDK 범주와 현재 CLI command를 표로 매핑한다.
 - `export-pdf`, `scan-hwpx-features`, `list-fields`, `list-controls`, table/header/footer commands의 검증 command를 같이 적는다.
 - 문서 보안, 비교/병합/이력 관리, HTML 변환처럼 현재 래퍼가 없는 기능은 unsupported 또는 needs-SDK로 표시한다.
+- 일반 HWP authoring 공백은 캡션/책갈피/상호 참조/차례/색인/각주/미주/메모/도형/글상자/글맵시/수식/차트/OLE/동영상/소리 단위로 나누고, 각 항목의 현재 상태를 inventory-only와 writer 없음으로 분리한다.
+- page/section layout은 용지/여백/방향/단/구역 나누기/구역별 쪽 번호 정책으로 쪼개고, form control은 press/checkbox/radio/combo/edit/button별 write contract 상태를 표기한다.
 
 이유: "한글 SDK에는 있는데 우리 프로젝트에는 없는 기능"을 일회성 점검이 아니라 추적 가능한 backlog로 바꿔야 한다.
 
