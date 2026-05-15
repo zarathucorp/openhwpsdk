@@ -43,6 +43,7 @@
     <Compile Include="HwpxFormMap.cs" />
     <Compile Include="HwpxContentValidator.cs" />
     <Compile Include="HwpxFeatureScanner.cs" />
+    <Compile Include="HwpxHeaderFooterBodyWriter.cs" />
     <Compile Include="HwpxHeaderFooterReferenceWriter.cs" />
     <Compile Include="HwpxHeaderFooterTextWriter.cs" />
     <Compile Include="HwpxImageControlReplacer.cs" />

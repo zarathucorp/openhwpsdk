@@ -77,12 +77,14 @@ This runs a feature scan for the HWPX input, exports the selected files to PDFs 
 & $cli list-header-footer C:\temp\template.hwpx C:\temp\header-footer-inventory.md
 & $cli set-header-footer-apply-page-type C:\temp\template.hwpx C:\temp\header-footer-page-type.hwpx --kind footer --section section0 --id-ref footer-ref --apply-page-type BOTH --report C:\temp\header-footer-page-type.md
 & $cli add-header-footer-reference C:\temp\template.hwpx C:\temp\header-footer-reference.hwpx --kind footer --section section0 --id-ref footer-ref --apply-page-type ODD --report C:\temp\header-footer-reference.md
+& $cli add-header-footer-text C:\temp\template.hwpx C:\temp\header-footer-text.hwpx --kind footer --section section0 --id-ref footer-odd --apply-page-type ODD --text "Odd footer" --report C:\temp\header-footer-text.md
 & $cli --visible list-fields C:\temp\template.hwpx C:\temp\field-inventory.md --com
 ```
 
 Inventory commands report what a package contains. `list-fields` also reports package write contracts: press-field text and checkbox values are supported package writes, while radio, combo, edit, button, and generic field items remain `skipped_unsafe` inventory-only targets. A nonzero count does not imply broad write support for that feature.
 `set-header-footer-apply-page-type` is a focused package writer for an existing header/footer reference. It updates `applyPageType` only and does not create a new repeated area or edit rich header/footer content.
 `add-header-footer-reference` adds one new header/footer reference for an already reusable `idRef` in the selected section, and rejects a section that already has the same kind and `applyPageType`. It does not create a new header/footer body, invent new rich content, or edit section page setup.
+`add-header-footer-text` creates a minimal one-paragraph text body plus a matching reference with a section-unique header/footer `idRef`. It rejects duplicate header/footer `idRef` or duplicate `kind + section + applyPageType`; rich header/footer objects and section page setup remain out of scope.
 
 ## Package Image Replacement
 
