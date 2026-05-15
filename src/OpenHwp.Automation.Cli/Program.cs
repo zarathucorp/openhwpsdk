@@ -170,6 +170,8 @@ namespace OpenHwp.Automation.Cli
                     return ListHeaderFooter(commandArgs);
                 case "set-header-footer-text":
                     return SetHeaderFooterText(commandArgs);
+                case "set-header-footer-apply-page-type":
+                    return SetHeaderFooterApplyPageType(commandArgs);
                 case "page-number-set":
                     return PageNumberSet(commandArgs, visible, keepOpen);
                 case "list-controls":
@@ -3986,6 +3988,101 @@ namespace OpenHwp.Automation.Cli
             return result.Applied ? 0 : 2;
         }
 
+        private static int SetHeaderFooterApplyPageType(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: set-header-footer-apply-page-type <inputHwpxPath> <outputHwpxPath> --kind header|footer --apply-page-type BOTH|EVEN|ODD [--section sectionName] [--id-ref idRef] [--occurrence index] [--report reportMarkdownPath]");
+                return 1;
+            }
+
+            string kind = null;
+            string section = null;
+            string idRef = null;
+            string applyPageType = null;
+            string reportPath = null;
+            var occurrence = 0;
+
+            for (var index = 3; index < args.Length; index++)
+            {
+                if (string.Equals(args[index], "--kind", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = RequireValue(args, ref index, "--kind");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--section", StringComparison.OrdinalIgnoreCase))
+                {
+                    section = RequireValue(args, ref index, "--section");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--id-ref", StringComparison.OrdinalIgnoreCase))
+                {
+                    idRef = RequireValue(args, ref index, "--id-ref");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--apply-page-type", StringComparison.OrdinalIgnoreCase))
+                {
+                    applyPageType = RequireValue(args, ref index, "--apply-page-type");
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--occurrence", StringComparison.OrdinalIgnoreCase))
+                {
+                    occurrence = ParseIntArgument(RequireValue(args, ref index, "--occurrence"), "occurrence");
+                    if (occurrence < 0)
+                    {
+                        Console.Error.WriteLine("--occurrence requires a zero-based non-negative integer.");
+                        return 1;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(args[index], "--report", StringComparison.OrdinalIgnoreCase))
+                {
+                    reportPath = RequireValue(args, ref index, "--report");
+                    continue;
+                }
+
+                Console.Error.WriteLine("Unexpected argument: " + args[index]);
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(kind))
+            {
+                Console.Error.WriteLine("--kind is required.");
+                return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(applyPageType))
+            {
+                Console.Error.WriteLine("--apply-page-type is required.");
+                return 1;
+            }
+
+            var result = HwpxHeaderFooterReferenceWriter.Write(args[1], args[2], kind, section, idRef, applyPageType, occurrence, reportPath);
+            Console.WriteLine("applied=" + BoolText(result.Applied));
+            Console.WriteLine("matched_references=" + result.MatchedReferences.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("modified_references=" + result.ModifiedReferences.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("old_apply_page_type=" + result.OldApplyPageType);
+            Console.WriteLine("new_apply_page_type=" + result.ApplyPageType);
+            if (!string.IsNullOrWhiteSpace(result.PartPath))
+            {
+                Console.WriteLine("part=" + result.PartPath);
+            }
+
+            Console.WriteLine("note=" + result.Note);
+            if (!string.IsNullOrWhiteSpace(reportPath))
+            {
+                Console.WriteLine(reportPath);
+            }
+
+            return result.Applied ? 0 : 2;
+        }
+
         private static int PageNumberSet(string[] args, bool visible, bool keepOpen)
         {
             if (args.Length < 3)
@@ -6005,6 +6102,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("  replace-image-control <inputHwpxPath> <outputHwpxPath> --target control:gso:<index>|picture:<index>|image:<binaryItemIDRef> --image imagePath [--report reportMarkdownPath]");
             Console.WriteLine("  list-header-footer <hwpxFileOrDirectory> [reportMarkdownPath]");
             Console.WriteLine("  set-header-footer-text <inputHwpxPath> <outputHwpxPath> --kind header|footer --anchor text --text replacement [--section sectionName] [--occurrence index] [--report reportMarkdownPath]");
+            Console.WriteLine("  set-header-footer-apply-page-type <inputHwpxPath> <outputHwpxPath> --kind header|footer --apply-page-type BOTH|EVEN|ODD [--section sectionName] [--id-ref idRef] [--occurrence index] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] page-number-set <inputPath> <outputPath> [--draw-pos value] [--side-char text] [--report reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] list-controls <inputPath> [reportMarkdownPath]");
             Console.WriteLine("  [--visible] [--keep-open] probe-copy-from-doc <sourcePath> <targetPath> --source all|paragraph-to-end:<text>|table:<index>|image:<index>|control:<ctrlId>:<index> [--target doc-end|anchor:<text>|cell:<table,rowMove,colMove>|control:<ctrlId>:<index>] [--report reportMarkdownPath] [--strict-cleanup]");

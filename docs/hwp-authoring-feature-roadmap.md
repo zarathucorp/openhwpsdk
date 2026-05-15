@@ -690,6 +690,8 @@
 
 ### 후보 G: Header/footer rich authoring
 
+상태: 구현 1차. `set-header-footer-apply-page-type` 명령으로 기존 header/footer reference의 `applyPageType`을 `BOTH|EVEN|ODD` 중 하나로 package-level 변경한다. 신규 반복 영역 생성과 rich object 편집은 아직 별도 단위다.
+
 - 신규 header/footer repeated area 생성.
 - header/footer 내부 그림/표/도형 포함 rich object 작성과 보존 검증.
 - section별 page setup과 COM-backed header/footer editing smoke test.

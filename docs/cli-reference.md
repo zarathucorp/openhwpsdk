@@ -75,10 +75,12 @@ This runs a feature scan for the HWPX input, exports the selected files to PDFs 
 & $cli scan-hwpx-features C:\temp\hwpx-samples C:\temp\feature-scan.md
 & $cli list-pictures C:\temp\template.hwpx C:\temp\picture-inventory.md
 & $cli list-header-footer C:\temp\template.hwpx C:\temp\header-footer-inventory.md
+& $cli set-header-footer-apply-page-type C:\temp\template.hwpx C:\temp\header-footer-page-type.hwpx --kind footer --section section0 --id-ref footer-ref --apply-page-type BOTH --report C:\temp\header-footer-page-type.md
 & $cli --visible list-fields C:\temp\template.hwpx C:\temp\field-inventory.md --com
 ```
 
 Inventory commands report what a package contains. `list-fields` also reports package write contracts: press-field text and checkbox values are supported package writes, while radio, combo, edit, button, and generic field items remain `skipped_unsafe` inventory-only targets. A nonzero count does not imply broad write support for that feature.
+`set-header-footer-apply-page-type` is a focused package writer for an existing header/footer reference. It updates `applyPageType` only and does not create a new repeated area or edit rich header/footer content.
 
 ## Package Image Replacement
 
