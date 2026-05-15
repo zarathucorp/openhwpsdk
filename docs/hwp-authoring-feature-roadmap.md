@@ -680,7 +680,7 @@
 
 ### 후보 F: PDF visual smoke harness
 
-상태: 구현 1차. `visual-smoke-corpus` 명령으로 feature corpus scan report와 PDF export 결과를 한 report 묶음으로 남긴다. HWP COM이 건강한 환경에서 PDF가 실제 생성돼야 pass이며, known failure는 `fileNameOrPath=exitCode[:reasonFragment]` exact xfail contract로만 허용한다. PNG render, page thumbnails, visual metrics는 아직 다음 개발 단위다.
+상태: 구현 2차. `visual-smoke-corpus` 명령으로 feature corpus scan report와 PDF export 결과를 한 report 묶음으로 남긴다. HWP COM이 건강한 환경에서 PDF가 실제 생성돼야 pass이며, known failure는 `fileNameOrPath=exitCode[:reasonFragment]` exact xfail contract로만 허용한다. PDF page/content-stream/text/image/drawing metrics와 blank 의심 `review-needed` 신호를 report에 남긴다. PNG render와 page thumbnails는 아직 다음 개발 단위다.
 
 - 로컬 feature fixture corpus의 대표 fixture를 PDF로 export하는 smoke command 정리.
 - scan report와 PDF export 결과를 같은 report 묶음으로 남긴다.

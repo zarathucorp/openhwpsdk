@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using OpenHwp.Automation;
 
@@ -467,6 +469,11 @@ namespace OpenHwp.Automation.Cli
                     result.PdfExists = pdfInfo.Exists;
                     result.PdfBytes = pdfInfo.Exists ? pdfInfo.Length : 0L;
                     result.Status = result.ExitCode == 0 && result.PdfExists && result.PdfBytes > 0 ? "exported" : "failed";
+                    if (string.Equals(result.Status, "exported", StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.PdfMetrics = AnalyzeVisualSmokePdf(result.PdfPath);
+                    }
+
                     result.Note = result.Status == "exported"
                         ? "ok"
                         : BuildVisualSmokeFailureNote(result.ExitCode, standardOutput, standardError, result.PdfExists, result.PdfBytes);
@@ -514,6 +521,7 @@ namespace OpenHwp.Automation.Cli
             var expectedFailures = results.Count(IsExpectedVisualSmokeFailureResult);
             var unmatchedExpectedFailures = expectedExportFailures.Count(item => !item.Matched);
             var unexpectedFailures = results.Count(IsUnexpectedVisualSmokeFailureResult) + unmatchedExpectedFailures;
+            var pdfReviewNeeded = results.Count(item => item.PdfMetrics != null && item.PdfMetrics.ReviewNeeded);
             var failed = expectedFailures + unexpectedFailures;
             Console.WriteLine("input=" + Path.GetFullPath(inputPath));
             Console.WriteLine("files=" + results.Count.ToString(CultureInfo.InvariantCulture));
@@ -522,6 +530,7 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("expected_failures=" + expectedFailures.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("unexpected_failures=" + unexpectedFailures.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("unmatched_expected_failures=" + unmatchedExpectedFailures.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("pdf_review_needed=" + pdfReviewNeeded.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("scan_package_errors=" + scanSummary.PackageErrors.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("scan_xml_parse_errors=" + scanSummary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("strict_cleanup=" + cleanupStatus);
@@ -3257,6 +3266,235 @@ namespace OpenHwp.Automation.Cli
             return 300000;
         }
 
+        private static VisualSmokePdfMetrics AnalyzeVisualSmokePdf(string pdfPath)
+        {
+            var metrics = new VisualSmokePdfMetrics();
+            try
+            {
+                var bytes = File.ReadAllBytes(pdfPath);
+                var documentText = new StringBuilder(Encoding.GetEncoding(28591).GetString(bytes));
+                foreach (var stream in ExtractPdfStreams(bytes))
+                {
+                    metrics.StreamCount++;
+                    var decoded = DecodePdfStream(stream);
+                    metrics.DecodedStreamBytes += decoded.Length;
+                    var streamText = Encoding.GetEncoding(28591).GetString(decoded);
+                    documentText.AppendLine();
+                    documentText.Append(streamText);
+
+                    if (IsLikelyPdfPageContentStream(streamText))
+                    {
+                        metrics.PageContentStreamBytes += decoded.Length;
+                        metrics.TextOperatorCount += CountPdfTextOperators(streamText);
+                        metrics.ImageOperatorCount += CountPdfImageOperators(streamText);
+                        metrics.DrawingOperatorCount += CountPdfDrawingOperators(streamText);
+                    }
+                }
+
+                var fullText = documentText.ToString();
+                metrics.PageCount = Regex.Matches(fullText, @"/Type\s*/Page(?!s)\b", RegexOptions.CultureInvariant).Count;
+                metrics.ImageOperatorCount += Regex.Matches(fullText, @"/Subtype\s*/Image\b", RegexOptions.CultureInvariant).Count;
+                ApplyVisualSmokePdfReview(metrics);
+            }
+            catch (Exception ex)
+            {
+                metrics.ReviewNeeded = true;
+                metrics.ReviewNote = "pdf metrics error: " + ex.GetType().Name + ": " + ex.Message;
+            }
+
+            return metrics;
+        }
+
+        private static IList<byte[]> ExtractPdfStreams(byte[] bytes)
+        {
+            var streams = new List<byte[]>();
+            var offset = 0;
+            while (offset < bytes.Length)
+            {
+                var streamIndex = IndexOfAscii(bytes, "stream", offset);
+                if (streamIndex < 0)
+                {
+                    break;
+                }
+
+                var dataStart = streamIndex + 6;
+                if (dataStart < bytes.Length && bytes[dataStart] == 13)
+                {
+                    dataStart++;
+                    if (dataStart < bytes.Length && bytes[dataStart] == 10)
+                    {
+                        dataStart++;
+                    }
+                }
+                else if (dataStart < bytes.Length && bytes[dataStart] == 10)
+                {
+                    dataStart++;
+                }
+
+                var endIndex = IndexOfAscii(bytes, "endstream", dataStart);
+                if (endIndex < 0)
+                {
+                    break;
+                }
+
+                var dataEnd = endIndex;
+                while (dataEnd > dataStart && (bytes[dataEnd - 1] == 10 || bytes[dataEnd - 1] == 13))
+                {
+                    dataEnd--;
+                }
+
+                streams.Add(SliceBytes(bytes, dataStart, dataEnd - dataStart));
+                offset = endIndex + 9;
+            }
+
+            return streams;
+        }
+
+        private static byte[] DecodePdfStream(byte[] stream)
+        {
+            if (stream == null || stream.Length < 7 || stream[0] != 0x78)
+            {
+                return stream ?? new byte[0];
+            }
+
+            try
+            {
+                using (var input = new MemoryStream(stream, 2, stream.Length - 6))
+                using (var deflate = new DeflateStream(input, CompressionMode.Decompress))
+                using (var output = new MemoryStream())
+                {
+                    deflate.CopyTo(output);
+                    return output.ToArray();
+                }
+            }
+            catch
+            {
+                return stream;
+            }
+        }
+
+        private static bool IsLikelyPdfPageContentStream(string text)
+        {
+            if (string.IsNullOrEmpty(text) || GetPrintableRatio(text) < 0.70)
+            {
+                return false;
+            }
+
+            var trimmed = text.TrimStart();
+            return trimmed.StartsWith("q", StringComparison.Ordinal) &&
+                   (text.IndexOf(" BT", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf("\nBT", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" Tj", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" TJ", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" Do", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" cm", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" m ", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" l ", StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(" W", StringComparison.Ordinal) >= 0);
+        }
+
+        private static double GetPrintableRatio(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            var printable = 0;
+            foreach (var ch in text)
+            {
+                if (ch == '\r' || ch == '\n' || ch == '\t' || (ch >= 32 && ch <= 126))
+                {
+                    printable++;
+                }
+            }
+
+            return (double)printable / text.Length;
+        }
+
+        private static int CountPdfTextOperators(string text)
+        {
+            return CountRegex(text, @"(?<![A-Za-z])(?:BT|ET|Tj|TJ|Tf|Tm|Td|TD|Tc|Tw|T\*)(?![A-Za-z])");
+        }
+
+        private static int CountPdfImageOperators(string text)
+        {
+            return CountRegex(text, @"(?<![A-Za-z])Do(?![A-Za-z])");
+        }
+
+        private static int CountPdfDrawingOperators(string text)
+        {
+            return CountRegex(text, @"(?<![A-Za-z])(?:m|l|c|v|y|re|S|s|f|F|W\*?|cm)(?![A-Za-z])");
+        }
+
+        private static int CountRegex(string text, string pattern)
+        {
+            return Regex.Matches(text ?? string.Empty, pattern, RegexOptions.CultureInvariant).Count;
+        }
+
+        private static void ApplyVisualSmokePdfReview(VisualSmokePdfMetrics metrics)
+        {
+            if (metrics.PageCount <= 0)
+            {
+                metrics.ReviewNeeded = true;
+                metrics.ReviewNote = "page object not detected";
+                return;
+            }
+
+            if (metrics.PageContentStreamBytes < 256)
+            {
+                metrics.ReviewNeeded = true;
+                metrics.ReviewNote = "low page content stream bytes";
+                return;
+            }
+
+            if (metrics.TextOperatorCount == 0 && metrics.ImageOperatorCount == 0 && metrics.DrawingOperatorCount <= 6)
+            {
+                metrics.ReviewNeeded = true;
+                metrics.ReviewNote = "minimal visible drawing operators";
+                return;
+            }
+
+            metrics.ReviewNeeded = false;
+            metrics.ReviewNote = "ok";
+        }
+
+        private static int IndexOfAscii(byte[] bytes, string value, int startIndex)
+        {
+            var pattern = Encoding.ASCII.GetBytes(value);
+            for (var index = Math.Max(0, startIndex); index <= bytes.Length - pattern.Length; index++)
+            {
+                var matched = true;
+                for (var patternIndex = 0; patternIndex < pattern.Length; patternIndex++)
+                {
+                    if (bytes[index + patternIndex] != pattern[patternIndex])
+                    {
+                        matched = false;
+                        break;
+                    }
+                }
+
+                if (matched)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private static byte[] SliceBytes(byte[] bytes, int offset, int count)
+        {
+            if (count <= 0)
+            {
+                return new byte[0];
+            }
+
+            var result = new byte[count];
+            Buffer.BlockCopy(bytes, offset, result, 0, count);
+            return result;
+        }
+
         private static IList<ComOperationWatchdog.HwpProcessInfo> SnapshotHwpProcessesAfterCleanup(
             IList<ComOperationWatchdog.HwpProcessInfo> before,
             bool strictCleanup,
@@ -3365,6 +3603,7 @@ namespace OpenHwp.Automation.Cli
             var expectedFailures = results.Count(IsExpectedVisualSmokeFailureResult);
             var unmatchedExpectedFailures = (expectedExportFailures ?? new VisualSmokeExpectedFailure[0]).Count(item => !item.Matched);
             var unexpectedFailures = results.Count(IsUnexpectedVisualSmokeFailureResult) + unmatchedExpectedFailures;
+            var pdfReviewNeeded = results.Count(item => item.PdfMetrics != null && item.PdfMetrics.ReviewNeeded);
             var failed = expectedFailures + unexpectedFailures;
             var report = new StringBuilder();
             report.AppendLine("# HWPX PDF Visual Smoke");
@@ -3379,6 +3618,7 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("- expected failures: " + expectedFailures.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- unexpected failures: " + unexpectedFailures.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- unmatched expected failures: " + unmatchedExpectedFailures.ToString(CultureInfo.InvariantCulture));
+            report.AppendLine("- PDF review-needed: " + pdfReviewNeeded.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- scan package errors: " + scanSummary.PackageErrors.ToString(CultureInfo.InvariantCulture));
             report.AppendLine("- scan XML parse errors: " + scanSummary.XmlParseErrors.ToString(CultureInfo.InvariantCulture));
             report.AppendLine();
@@ -3408,10 +3648,11 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine();
             report.AppendLine("## PDF Exports");
             report.AppendLine();
-            report.AppendLine("| file | status | expected | expected exit | expected reason | exit | pdf | bytes | note |");
-            report.AppendLine("| --- | --- | --- | ---: | --- | ---: | --- | ---: | --- |");
+            report.AppendLine("| file | status | expected | expected exit | expected reason | exit | pdf | bytes | pages | content bytes | text ops | image ops | drawing ops | PDF review | note |");
+            report.AppendLine("| --- | --- | --- | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |");
             foreach (var result in results)
             {
+                var pdfMetrics = result.PdfMetrics;
                 report.Append("| ");
                 report.Append(EscapeMarkdownTable(Path.GetFileName(result.InputPath)));
                 report.Append(" | ");
@@ -3428,6 +3669,18 @@ namespace OpenHwp.Automation.Cli
                 report.Append(EscapeMarkdownTable(result.PdfPath));
                 report.Append(" | ");
                 report.Append(result.PdfBytes.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(pdfMetrics == null ? string.Empty : pdfMetrics.PageCount.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(pdfMetrics == null ? string.Empty : pdfMetrics.PageContentStreamBytes.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(pdfMetrics == null ? string.Empty : pdfMetrics.TextOperatorCount.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(pdfMetrics == null ? string.Empty : pdfMetrics.ImageOperatorCount.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(pdfMetrics == null ? string.Empty : pdfMetrics.DrawingOperatorCount.ToString(CultureInfo.InvariantCulture));
+                report.Append(" | ");
+                report.Append(EscapeMarkdownTable(pdfMetrics == null ? string.Empty : FormatPdfReview(pdfMetrics)));
                 report.Append(" | ");
                 report.Append(EscapeMarkdownTable(result.Note));
                 report.AppendLine(" |");
@@ -3466,6 +3719,16 @@ namespace OpenHwp.Automation.Cli
             report.Append(" | ");
             report.Append(count.ToString(CultureInfo.InvariantCulture));
             report.AppendLine(" |");
+        }
+
+        private static string FormatPdfReview(VisualSmokePdfMetrics metrics)
+        {
+            if (metrics == null)
+            {
+                return string.Empty;
+            }
+
+            return metrics.ReviewNeeded ? "review-needed: " + metrics.ReviewNote : "ok";
         }
 
         private static int ReplaceImageControl(string[] args)
@@ -5549,7 +5812,30 @@ namespace OpenHwp.Automation.Cli
 
             public long PdfBytes { get; set; }
 
+            public VisualSmokePdfMetrics PdfMetrics { get; set; }
+
             public string Note { get; set; }
+        }
+
+        private sealed class VisualSmokePdfMetrics
+        {
+            public int PageCount { get; set; }
+
+            public int StreamCount { get; set; }
+
+            public int DecodedStreamBytes { get; set; }
+
+            public int PageContentStreamBytes { get; set; }
+
+            public int TextOperatorCount { get; set; }
+
+            public int ImageOperatorCount { get; set; }
+
+            public int DrawingOperatorCount { get; set; }
+
+            public bool ReviewNeeded { get; set; }
+
+            public string ReviewNote { get; set; }
         }
 
         private sealed class VisualSmokeExpectedFailure
