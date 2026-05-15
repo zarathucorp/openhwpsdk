@@ -184,8 +184,9 @@
 - `scan-hwpx-features`의 Header/Footer Inventory 표도 동일하게 section/applyPageType 컬럼을 포함하도록 확장했다.
 - `set-header-footer-text` 명령으로 기존 header/footer body 안의 anchor 텍스트를 package-level로 치환한다.
 - `header-footer.hwpx` fixture에서 header 본문 텍스트 치환 후 content/layout/header-footer inventory smoke를 통과했다.
+- `add-header-footer-reference` 명령으로 이미 존재하는 header/footer `idRef`를 재사용해 새 `applyPageType` reference를 하나 추가한다. 같은 section/kind의 `applyPageType` 중복은 거부한다.
 - `page-number-set` 명령으로 COM 기반 쪽 번호를 삽입한다. 실제 제출서식 smoke에서 `pageNumbers=1`, `references` 2 -> 3, 표 48개 유지, layout verdict pass를 확인했다.
-- COM 기반 header/footer 쓰기와 신규 header/footer 영역 생성은 아직 다음 개발 단위다.
+- 신규 header/footer body 생성, rich object 편집, COM 기반 header/footer 쓰기는 아직 다음 개발 단위다.
 
 ### Phase 2. 누름틀/필드/양식 개체
 
@@ -690,13 +691,13 @@
 
 ### 후보 G: Header/footer rich authoring
 
-상태: 구현 1차. `set-header-footer-apply-page-type` 명령으로 기존 header/footer reference의 `applyPageType`을 `BOTH|EVEN|ODD` 중 하나로 package-level 변경한다. 신규 반복 영역 생성과 rich object 편집은 아직 별도 단위다.
+상태: 구현 2차. `set-header-footer-apply-page-type` 명령으로 기존 header/footer reference의 `applyPageType`을 `BOTH|EVEN|ODD` 중 하나로 package-level 변경한다. `add-header-footer-reference` 명령은 이미 존재하는 `idRef`를 재사용해 새 reference만 추가하며, 같은 section/kind의 `applyPageType` 중복은 거부한다. 신규 body 생성과 rich object 편집은 아직 별도 단위다.
 
-- 신규 header/footer repeated area 생성.
+- 신규 header/footer body 생성.
 - header/footer 내부 그림/표/도형 포함 rich object 작성과 보존 검증.
 - section별 page setup과 COM-backed header/footer editing smoke test.
 
-이유: 기본 inventory/text write/page-number smoke는 들어왔고, 남은 실무 gap은 반복 영역의 생성과 rich object 편집이다.
+이유: 기본 inventory/text write/page-number smoke와 기존 body reference 재사용은 들어왔고, 남은 실무 gap은 신규 body 생성과 rich object 편집이다.
 
 ### 후보 H: Field/form write contracts
 

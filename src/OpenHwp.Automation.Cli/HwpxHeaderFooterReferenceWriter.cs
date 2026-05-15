@@ -127,12 +127,156 @@ namespace OpenHwp.Automation.Cli
             return result;
         }
 
+        public static HeaderFooterReferenceAddResult Add(
+            string inputPath,
+            string outputPath,
+            string kind,
+            string section,
+            string idRef,
+            string applyPageType,
+            string reportPath)
+        {
+            if (string.IsNullOrWhiteSpace(inputPath))
+            {
+                throw new ArgumentException("Input path is required.", nameof(inputPath));
+            }
+
+            if (string.IsNullOrWhiteSpace(outputPath))
+            {
+                throw new ArgumentException("Output path is required.", nameof(outputPath));
+            }
+
+            kind = (kind ?? string.Empty).Trim().ToLowerInvariant();
+            if (kind != "header" && kind != "footer")
+            {
+                throw new ArgumentException("kind must be header or footer.", nameof(kind));
+            }
+
+            idRef = (idRef ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(idRef))
+            {
+                throw new ArgumentException("--id-ref is required.", nameof(idRef));
+            }
+
+            applyPageType = NormalizeApplyPageType(applyPageType);
+
+            var inputFullPath = Path.GetFullPath(inputPath);
+            var outputFullPath = Path.GetFullPath(outputPath);
+            var entries = SimpleZipArchive.ReadAll(inputFullPath);
+            var result = new HeaderFooterReferenceAddResult
+            {
+                InputPath = inputFullPath,
+                OutputPath = outputFullPath,
+                Kind = kind,
+                Section = section ?? string.Empty,
+                IdRef = idRef,
+                ApplyPageType = applyPageType,
+                Note = "matching reusable header/footer reference was not found"
+            };
+
+            foreach (var entry in entries.ToList().OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                XDocument document;
+                try
+                {
+                    document = XDocument.Parse(Encoding.UTF8.GetString(entry.Value), LoadOptions.PreserveWhitespace);
+                }
+                catch (XmlException)
+                {
+                    continue;
+                }
+
+                var partSection = ExtractSectionName(entry.Key);
+                if (!string.IsNullOrWhiteSpace(section) &&
+                    !string.Equals(section, partSection, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var elements = document.Root == null
+                    ? new List<XElement>()
+                    : document.Root.DescendantsAndSelf(Hp + kind).ToList();
+                var bodies = elements.Where(IsHeaderFooterBody).ToList();
+                var references = elements.Where(IsHeaderFooterReference).ToList();
+                var matchingReferences = references
+                    .Where(element => string.Equals(GetString(element, "idRef"), idRef, StringComparison.Ordinal))
+                    .ToList();
+                var applyPageTypeReferences = references
+                    .Where(element => string.Equals(GetString(element, "applyPageType"), applyPageType, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (bodies.Count == 0 && matchingReferences.Count == 0)
+                {
+                    continue;
+                }
+
+                result.PartPath = NormalizePackagePath(entry.Key);
+                result.Section = partSection;
+                result.MatchedBodies = bodies.Count;
+                result.ExistingReferences = references.Count;
+                result.MatchedReferences = matchingReferences.Count;
+                result.ApplyPageTypeConflicts = applyPageTypeReferences.Count;
+
+                if (bodies.Count == 0)
+                {
+                    result.Note = "matching header/footer body was not found";
+                    WriteAddReport(result, reportPath);
+                    return result;
+                }
+
+                if (matchingReferences.Count == 0)
+                {
+                    result.Note = "matching reusable header/footer reference was not found";
+                    WriteAddReport(result, reportPath);
+                    return result;
+                }
+
+                result.DuplicateReferences = matchingReferences.Count(element =>
+                    string.Equals(GetString(element, "applyPageType"), applyPageType, StringComparison.OrdinalIgnoreCase));
+                if (applyPageTypeReferences.Count > 0)
+                {
+                    result.Note = "same kind and applyPageType already exists in section";
+                    WriteAddReport(result, reportPath);
+                    return result;
+                }
+
+                var anchor = matchingReferences.Last();
+                var newReference = new XElement(
+                    Hp + kind,
+                    new XAttribute("idRef", idRef),
+                    new XAttribute("applyPageType", applyPageType));
+                anchor.AddAfterSelf(newReference);
+
+                entries[entry.Key] = SerializeXml(document);
+                SimpleZipArchive.WriteAllPreservingTemplate(inputFullPath, outputFullPath, entries);
+
+                result.Added = true;
+                result.AddedReferences = 1;
+                result.Note = "header/footer reference added";
+                WriteAddReport(result, reportPath);
+                return result;
+            }
+
+            WriteAddReport(result, reportPath);
+            return result;
+        }
+
         private static bool IsHeaderFooterReference(XElement element)
         {
             return element != null &&
                    !element.Descendants(Hp + "subList").Any() &&
                    !element.Descendants(Hp + "p").Any() &&
                    !element.Descendants(Hp + "tbl").Any();
+        }
+
+        private static bool IsHeaderFooterBody(XElement element)
+        {
+            return element != null && !IsHeaderFooterReference(element);
         }
 
         private static string NormalizeApplyPageType(string value)
@@ -219,6 +363,44 @@ namespace OpenHwp.Automation.Cli
             File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(true));
         }
 
+        private static void WriteAddReport(HeaderFooterReferenceAddResult result, string reportPath)
+        {
+            if (string.IsNullOrWhiteSpace(reportPath))
+            {
+                return;
+            }
+
+            var report = new StringBuilder();
+            report.AppendLine("# HWPX Header/Footer Reference Add");
+            report.AppendLine();
+            report.AppendLine("- input: `" + result.InputPath + "`");
+            report.AppendLine("- output: `" + result.OutputPath + "`");
+            report.AppendLine("- kind: `" + result.Kind + "`");
+            report.AppendLine("- section: `" + result.Section + "`");
+            report.AppendLine("- verdict: " + (result.Added ? "added" : "failed"));
+            report.AppendLine();
+            report.AppendLine("| field | value |");
+            report.AppendLine("| --- | --- |");
+            AppendReportRow(report, "matched bodies", result.MatchedBodies.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "existing references", result.ExistingReferences.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "matched references", result.MatchedReferences.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "applyPageType conflicts", result.ApplyPageTypeConflicts.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "duplicate references", result.DuplicateReferences.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "added references", result.AddedReferences.ToString(CultureInfo.InvariantCulture));
+            AppendReportRow(report, "part", result.PartPath);
+            AppendReportRow(report, "idRef", result.IdRef);
+            AppendReportRow(report, "applyPageType", result.ApplyPageType);
+            AppendReportRow(report, "note", result.Note);
+
+            var directory = Path.GetDirectoryName(Path.GetFullPath(reportPath));
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(true));
+        }
+
         private static void AppendReportRow(StringBuilder report, string field, string value)
         {
             report.Append("| ");
@@ -274,6 +456,39 @@ namespace OpenHwp.Automation.Cli
         public int ModifiedReferences { get; set; }
 
         public bool Applied { get; set; }
+
+        public string PartPath { get; set; }
+
+        public string Note { get; set; }
+    }
+
+    internal sealed class HeaderFooterReferenceAddResult
+    {
+        public string InputPath { get; set; }
+
+        public string OutputPath { get; set; }
+
+        public string Kind { get; set; }
+
+        public string Section { get; set; }
+
+        public string IdRef { get; set; }
+
+        public string ApplyPageType { get; set; }
+
+        public int MatchedBodies { get; set; }
+
+        public int ExistingReferences { get; set; }
+
+        public int MatchedReferences { get; set; }
+
+        public int ApplyPageTypeConflicts { get; set; }
+
+        public int DuplicateReferences { get; set; }
+
+        public int AddedReferences { get; set; }
+
+        public bool Added { get; set; }
 
         public string PartPath { get; set; }
 
