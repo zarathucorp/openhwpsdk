@@ -762,6 +762,9 @@ namespace OpenHwp.Automation.Cli
             }
 
             var packageItems = summary.Files.Sum(file => file.FieldFormItems.Count);
+            var packageTextWritable = summary.Files.Sum(file => file.FieldFormItems.Count(item => string.Equals(GetFieldWriteContract(item.Kind), "package-text", StringComparison.Ordinal)));
+            var packageValueWritable = summary.Files.Sum(file => file.FieldFormItems.Count(item => string.Equals(GetFieldWriteContract(item.Kind), "package-value", StringComparison.Ordinal)));
+            var skippedUnsafe = summary.Files.Sum(file => file.FieldFormItems.Count(item => string.Equals(GetFieldWriteStatus(item.Kind), "skipped_unsafe", StringComparison.Ordinal)));
             if (!string.IsNullOrWhiteSpace(reportPath))
             {
                 WriteFieldInventoryReport(summary, includeCom, comRaw, comFields, option, optionEx, reportPath);
@@ -775,6 +778,9 @@ namespace OpenHwp.Automation.Cli
             Console.WriteLine("field_markers=" + summary.Count("fieldMarkers").ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("press_fields=" + summary.Count("pressFields").ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("form_objects=" + summary.Count("formObjects").ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_text_writable=" + packageTextWritable.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("package_value_writable=" + packageValueWritable.ToString(CultureInfo.InvariantCulture));
+            Console.WriteLine("skipped_unsafe=" + skippedUnsafe.ToString(CultureInfo.InvariantCulture));
             Console.WriteLine("com_enabled=" + BoolText(includeCom));
             Console.WriteLine("com_fields=" + comFields.Count.ToString(CultureInfo.InvariantCulture));
             if (!string.IsNullOrWhiteSpace(reportPath))
@@ -4978,6 +4984,15 @@ namespace OpenHwp.Automation.Cli
             report.AppendLine("| combo boxes | " + summary.Count("comboBoxes").ToString(CultureInfo.InvariantCulture) + " |");
             report.AppendLine("| edit fields | " + summary.Count("editFields").ToString(CultureInfo.InvariantCulture) + " |");
             report.AppendLine();
+            report.AppendLine("## Write Contracts");
+            report.AppendLine();
+            report.AppendLine("| contract | status | count | meaning |");
+            report.AppendLine("| --- | --- | ---: | --- |");
+            var fieldKinds = rows.Select(item => item.Detail.Kind).ToList();
+            AppendFieldContractSummaryRow(report, fieldKinds, "package-text", "supported", "press-field text replacement with currentText validation");
+            AppendFieldContractSummaryRow(report, fieldKinds, "package-value", "supported", "checkbox value write with current value validation");
+            AppendFieldContractSummaryRow(report, fieldKinds, "inventory-only", "skipped_unsafe", "detected but not written by package field workflows");
+            report.AppendLine();
 
             report.AppendLine("## Package Items");
             report.AppendLine();
@@ -4987,8 +5002,8 @@ namespace OpenHwp.Automation.Cli
             }
             else
             {
-                report.AppendLine("| file | part | kind | attrs | text |");
-                report.AppendLine("| --- | --- | --- | --- | --- |");
+                report.AppendLine("| file | part | kind | write contract | write status | allowed values | attrs | text |");
+                report.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- |");
                 foreach (var row in rows.OrderBy(item => item.File.Path, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Detail.PartPath, StringComparer.Ordinal).ThenBy(item => item.Detail.Kind, StringComparer.Ordinal).ThenBy(item => item.Detail.Attributes, StringComparer.Ordinal))
                 {
                     report.Append("| ");
@@ -4997,6 +5012,12 @@ namespace OpenHwp.Automation.Cli
                     report.Append(EscapeMarkdownTable(row.Detail.PartPath));
                     report.Append(" | ");
                     report.Append(EscapeMarkdownTable(row.Detail.Kind));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(GetFieldWriteContract(row.Detail.Kind)));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(GetFieldWriteStatus(row.Detail.Kind)));
+                    report.Append(" | ");
+                    report.Append(EscapeMarkdownTable(GetFieldAllowedValues(row.Detail.Kind)));
                     report.Append(" | ");
                     report.Append(EscapeMarkdownTable(row.Detail.Attributes));
                     report.Append(" | ");
@@ -5050,6 +5071,47 @@ namespace OpenHwp.Automation.Cli
             }
 
             WriteUtf8File(reportPath, report.ToString());
+        }
+
+        private static void AppendFieldContractSummaryRow(StringBuilder report, IEnumerable<string> kinds, string contract, string status, string meaning)
+        {
+            var count = (kinds ?? new string[0]).Count(kind =>
+                string.Equals(GetFieldWriteContract(kind), contract, StringComparison.Ordinal) &&
+                string.Equals(GetFieldWriteStatus(kind), status, StringComparison.Ordinal));
+            report.Append("| ");
+            report.Append(EscapeMarkdownTable(contract));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(status));
+            report.Append(" | ");
+            report.Append(count.ToString(CultureInfo.InvariantCulture));
+            report.Append(" | ");
+            report.Append(EscapeMarkdownTable(meaning));
+            report.AppendLine(" |");
+        }
+
+        private static string GetFieldWriteContract(string kind)
+        {
+            switch (kind ?? string.Empty)
+            {
+                case "pressField":
+                case "press":
+                    return "package-text";
+                case "checkBox":
+                    return "package-value";
+                default:
+                    return "inventory-only";
+            }
+        }
+
+        private static string GetFieldWriteStatus(string kind)
+        {
+            var contract = GetFieldWriteContract(kind);
+            return string.Equals(contract, "inventory-only", StringComparison.Ordinal) ? "skipped_unsafe" : "supported";
+        }
+
+        private static string GetFieldAllowedValues(string kind)
+        {
+            return string.Equals(GetFieldWriteContract(kind), "package-value", StringComparison.Ordinal) ? "CHECKED|UNCHECKED" : string.Empty;
         }
 
         private static void WritePageNumberReport(string inputPath, string outputPath, int drawPos, string sideChar, bool applied, string reportPath)

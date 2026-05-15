@@ -78,7 +78,7 @@ This runs a feature scan for the HWPX input, exports the selected files to PDFs 
 & $cli --visible list-fields C:\temp\template.hwpx C:\temp\field-inventory.md --com
 ```
 
-Inventory commands report what a package contains. A nonzero count does not imply broad write support for that feature.
+Inventory commands report what a package contains. `list-fields` also reports package write contracts: press-field text and checkbox values are supported package writes, while radio, combo, edit, button, and generic field items remain `skipped_unsafe` inventory-only targets. A nonzero count does not imply broad write support for that feature.
 
 ## Package Image Replacement
 

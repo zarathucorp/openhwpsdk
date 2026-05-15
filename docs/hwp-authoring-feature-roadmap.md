@@ -698,6 +698,8 @@
 
 ### 후보 H: Field/form write contracts
 
+상태: 구현 1차. `list-fields` report가 package field/form item별 write contract를 표시한다. press-field text는 `package-text`, checkbox value는 `package-value`로 지원하고, radio/combo/edit/button/generic field는 `inventory-only` 및 `skipped_unsafe`로 남긴다.
+
 - generic field, radio, combo, edit, button control의 write contract를 field type별로 분리한다.
 - 값 쓰기 전후 package value/currentText mismatch 정책을 정한다.
 - unsupported control은 skipped_unsafe로 남기고 implemented로 표시하지 않는다.
